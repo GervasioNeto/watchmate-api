@@ -1,19 +1,17 @@
 import { Router } from 'express';
+import { asyncHandler } from '../lib/asyncHandler';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
-router.get('/me', authenticate, async (req, res) => {
-  const usuarioToken = req.usuario!;
-
-  const usuario = await prisma.usuario.upsert({
-    where: { id: usuarioToken.id },
-    update: {},
-    create: { id: usuarioToken.id, email: usuarioToken.email },
-  });
-
-  res.json(usuario);
-});
+router.get(
+  '/me',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const user = await prisma.usuario.findUniqueOrThrow({ where: { id: req.user!.id } });
+    res.json(user);
+  }),
+);
 
 export default router;

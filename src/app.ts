@@ -1,4 +1,5 @@
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
+import gruposRouter from './routes/grupos';
 import meRouter from './routes/me';
 
 const app = express();
@@ -10,5 +11,12 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 app.use(meRouter);
+app.use(gruposRouter);
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: 'Erro interno do servidor' });
+});
 
 export default app;

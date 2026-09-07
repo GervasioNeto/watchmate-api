@@ -1,9 +1,9 @@
-import { UsuarioAutenticado } from '../middleware/auth';
+import { AuthenticatedUser } from '../middleware/auth';
 
 declare global {
   namespace Express {
     interface Request {
-      usuario?: UsuarioAutenticado;
+      user?: AuthenticatedUser;
     }
   }
 }

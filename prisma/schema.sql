@@ -70,7 +70,7 @@ CREATE UNIQUE INDEX "usuarios_email_key" ON "usuarios"("email");
 CREATE UNIQUE INDEX "grupos_codigo_convite_key" ON "grupos"("codigo_convite");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "membros_do_grupo_grupo_id_usuario_id_key" ON "membros_do_grupo"("grupo_id", "usuario_id");
+CREATE UNIQUE INDEX "membros_do_grupo_usuario_id_key" ON "membros_do_grupo"("usuario_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "series_acompanhadas_grupo_id_tmdb_id_key" ON "series_acompanhadas"("grupo_id", "tmdb_id");
@@ -92,4 +92,3 @@ ALTER TABLE "progresso_episodios" ADD CONSTRAINT "progresso_episodios_serie_acom
 
 -- AddForeignKey
 ALTER TABLE "progresso_episodios" ADD CONSTRAINT "progresso_episodios_marcado_por_fkey" FOREIGN KEY ("marcado_por") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
