@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// O id espelha o auth.users.id do Supabase Auth (não é gerado pelo Prisma).
+// A linha em "usuarios" é criada pela aplicação após o cadastro no Supabase.
+model Usuario {
+  id       String   @id @db.Uuid
+  email    String   @unique
+  nome     String?
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  membrosDoGrupo     MembroDoGrupo[]
+  progressoEpisodios ProgressoEpisodio[] @relation("EpisodioMarcadoPor")
+
+  @@map("usuarios")
+}
+
+model Grupo {
+  id            String   @id @default(uuid()) @db.Uuid
+  codigoConvite String   @unique @map("codigo_convite")
+  criadoEm      DateTime @default(now()) @map("criado_em")
+
+  membros            MembroDoGrupo[]
+  seriesAcompanhadas SerieAcompanhada[]
+
+  @@map("grupos")
+}
+
+// Regra de negócio "limitado a 2 membros" é validada na aplicação, não no banco.
+model MembroDoGrupo {
+  id        String   @id @default(uuid()) @db.Uuid
+  grupoId   String   @map("grupo_id") @db.Uuid
+  usuarioId String   @map("usuario_id") @db.Uuid
+  entrouEm  DateTime @default(now()) @map("entrou_em")
+
+  grupo   Grupo   @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([grupoId, usuarioId])
+  @@map("membros_do_grupo")
+}
+
+model SerieAcompanhada {
+  id           String   @id @default(uuid()) @db.Uuid
+  grupoId      String   @map("grupo_id") @db.Uuid
+  tmdbId       Int      @map("tmdb_id")
+  nome         String
+  posterPath   String?  @map("poster_path")
+  adicionadoEm DateTime @default(now()) @map("adicionado_em")
+
+  grupo              Grupo               @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  progressoEpisodios ProgressoEpisodio[]
+
+  @@unique([grupoId, tmdbId])
+  @@map("series_acompanhadas")
+}
+
+model ProgressoEpisodio {
+  id                 String    @id @default(uuid()) @db.Uuid
+  serieAcompanhadaId String    @map("serie_acompanhada_id") @db.Uuid
+  temporada          Int
+  episodio           Int
+  assistidoEm        DateTime? @map("assistido_em")
+  marcadoPor         String?   @map("marcado_por") @db.Uuid
+
+  serieAcompanhada  SerieAcompanhada @relation(fields: [serieAcompanhadaId], references: [id], onDelete: Cascade)
+  marcadoPorUsuario Usuario?         @relation("EpisodioMarcadoPor", fields: [marcadoPor], references: [id], onDelete: SetNull)
+
+  @@unique([serieAcompanhadaId, temporada, episodio])
+  @@map("progresso_episodios")
+}
