@@ -3,10 +3,26 @@ import { Router } from 'express';
 import { asyncHandler } from '../lib/asyncHandler';
 import { getUserGroupId } from '../lib/groupMembership';
 import prisma from '../lib/prisma';
-import { fetchSeriesFromTmdb, SeriesNotFoundError } from '../lib/tmdb';
+import { fetchSeriesFromTmdb, searchSeriesOnTmdb, SeriesNotFoundError } from '../lib/tmdb';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
+
+router.get(
+  '/series/search',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const { q } = req.query;
+
+    if (typeof q !== 'string' || q.trim().length === 0) {
+      res.status(400).json({ error: 'q é obrigatório' });
+      return;
+    }
+
+    const results = await searchSeriesOnTmdb(q.trim());
+    res.json(results);
+  }),
+);
 
 router.post(
   '/series',
@@ -44,6 +60,7 @@ router.post(
           tmdbId: details.tmdbId,
           nome: details.name,
           posterPath: details.posterPath,
+          temporadas: details.seasons as unknown as Prisma.InputJsonValue,
         },
       });
       res.status(201).json(series);
