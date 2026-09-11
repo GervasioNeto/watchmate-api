@@ -1,3 +1,4 @@
+import cors from 'cors';
 import express, { NextFunction, Request, Response } from 'express';
 import groupsRouter from './routes/groups';
 import meRouter from './routes/me';
@@ -5,6 +6,11 @@ import seriesRouter from './routes/series';
 
 const app = express();
 
+const allowedOrigins = (process.env.FRONTEND_URL ?? 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim());
+
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 app.get('/health', (_req: Request, res: Response) => {
