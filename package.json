@@ -4,6 +4,9 @@
   "description": "API REST para tracker de series/filmes para casais",
   "private": true,
   "main": "dist/server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
