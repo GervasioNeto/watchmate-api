@@ -10,7 +10,7 @@ const router = Router();
 const MAX_CODE_ATTEMPTS = 5;
 
 router.post(
-  '/grupos',
+  '/groups',
   authenticate,
   asyncHandler(async (req, res) => {
     const userId = req.user!.id;
@@ -51,7 +51,7 @@ router.post(
 );
 
 router.post(
-  '/grupos/entrar',
+  '/groups/join',
   authenticate,
   asyncHandler(async (req, res) => {
     const userId = req.user!.id;
@@ -105,7 +105,7 @@ router.post(
 );
 
 router.get(
-  '/grupos/me',
+  '/groups/me',
   authenticate,
   asyncHandler(async (req, res) => {
     const userId = req.user!.id;
