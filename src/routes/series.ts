@@ -3,7 +3,12 @@ import { Router } from 'express';
 import { asyncHandler } from '../lib/asyncHandler';
 import { getUserGroupId } from '../lib/groupMembership';
 import prisma from '../lib/prisma';
-import { fetchSeriesFromTmdb, searchSeriesOnTmdb, SeriesNotFoundError } from '../lib/tmdb';
+import {
+  fetchSeasonFromTmdb,
+  fetchSeriesFromTmdb,
+  searchSeriesOnTmdb,
+  SeriesNotFoundError,
+} from '../lib/tmdb';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
@@ -61,6 +66,14 @@ router.post(
           nome: details.name,
           posterPath: details.posterPath,
           temporadas: details.seasons as unknown as Prisma.InputJsonValue,
+          sinopse: details.sinopse,
+          notaMedia: details.notaMedia,
+          status: details.status,
+          backdropPath: details.backdropPath,
+          generos: details.generos,
+          primeiraExibicaoEm: details.primeiraExibicaoEm,
+          idiomaOriginal: details.idiomaOriginal,
+          nomeOriginal: details.nomeOriginal,
         },
       });
       res.status(201).json(series);
@@ -173,6 +186,44 @@ router.put(
     });
 
     res.json(progress);
+  }),
+);
+
+router.get(
+  '/series/:seriesId/seasons/:season/episodes',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, season } = req.params;
+
+    const seasonNumber = Number(season);
+    if (!Number.isInteger(seasonNumber)) {
+      res.status(400).json({ error: 'season deve ser um número inteiro' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    try {
+      const episodes = await fetchSeasonFromTmdb(series.tmdbId, seasonNumber);
+      res.json(episodes);
+    } catch (err) {
+      if (err instanceof SeriesNotFoundError) {
+        res.status(404).json({ error: 'Temporada não encontrada no TMDB' });
+        return;
+      }
+      throw err;
+    }
   }),
 );
 

@@ -49,15 +49,23 @@ model MembroDoGrupo {
 }
 
 model SerieAcompanhada {
-  id           String   @id @default(uuid()) @db.Uuid
-  grupoId      String   @map("grupo_id") @db.Uuid
-  tmdbId       Int      @map("tmdb_id")
-  nome         String
-  posterPath   String?  @map("poster_path")
+  id                 String    @id @default(uuid()) @db.Uuid
+  grupoId            String    @map("grupo_id") @db.Uuid
+  tmdbId             Int       @map("tmdb_id")
+  nome               String
+  posterPath         String?   @map("poster_path")
   // Snapshot do TMDB no momento em que a série foi adicionada: [{ numero: number, totalEpisodios: number }].
   // Não é atualizado depois — se a série ganhar temporadas novas, é preciso reimportar.
-  temporadas   Json
-  adicionadoEm DateTime @default(now()) @map("adicionado_em")
+  temporadas         Json
+  sinopse            String?   @map("sinopse")
+  notaMedia          Float?    @map("nota_media")
+  status             String?   @map("status")
+  backdropPath       String?   @map("backdrop_path")
+  generos            String[]  @map("generos")
+  primeiraExibicaoEm DateTime? @map("primeira_exibicao_em")
+  idiomaOriginal     String?   @map("idioma_original")
+  nomeOriginal       String?   @map("nome_original")
+  adicionadoEm       DateTime  @default(now()) @map("adicionado_em")
 
   grupo              Grupo               @relation(fields: [grupoId], references: [id], onDelete: Cascade)
   progressoEpisodios ProgressoEpisodio[]
