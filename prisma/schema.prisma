@@ -24,6 +24,7 @@ model Usuario {
 
 model Grupo {
   id            String   @id @default(uuid()) @db.Uuid
+  nome          String   @default("Nosso Grupo")
   codigoConvite String   @unique @map("codigo_convite")
   criadoEm      DateTime @default(now()) @map("criado_em")
 

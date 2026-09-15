@@ -124,4 +124,32 @@ router.get(
   }),
 );
 
+router.patch(
+  '/groups/me',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { nome } = req.body as { nome?: string };
+
+    if (typeof nome !== 'string' || nome.trim().length === 0) {
+      res.status(400).json({ error: 'nome é obrigatório' });
+      return;
+    }
+
+    const membership = await prisma.membroDoGrupo.findUnique({ where: { usuarioId: userId } });
+    if (!membership) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const group = await prisma.grupo.update({
+      where: { id: membership.grupoId },
+      data: { nome: nome.trim() },
+      include: { membros: true },
+    });
+
+    res.json(group);
+  }),
+);
+
 export default router;
