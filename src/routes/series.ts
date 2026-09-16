@@ -74,6 +74,7 @@ router.post(
           primeiraExibicaoEm: details.primeiraExibicaoEm,
           idiomaOriginal: details.idiomaOriginal,
           nomeOriginal: details.nomeOriginal,
+          englishName: details.englishName,
         },
       });
       res.status(201).json(series);

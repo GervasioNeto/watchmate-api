@@ -65,6 +65,7 @@ model SerieAcompanhada {
   primeiraExibicaoEm DateTime? @map("primeira_exibicao_em")
   idiomaOriginal     String?   @map("idioma_original")
   nomeOriginal       String?   @map("nome_original")
+  englishName        String?   @map("english_name")
   adicionadoEm       DateTime  @default(now()) @map("adicionado_em")
 
   grupo              Grupo               @relation(fields: [grupoId], references: [id], onDelete: Cascade)

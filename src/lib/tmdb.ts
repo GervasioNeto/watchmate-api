@@ -20,6 +20,7 @@ export interface TmdbSeriesDetails {
   primeiraExibicaoEm: Date | null;
   idiomaOriginal: string | null;
   nomeOriginal: string | null;
+  englishName: string | null;
 }
 
 interface TmdbTvResponse {
@@ -41,6 +42,7 @@ export interface TmdbSeriesSummary {
   name: string;
   posterPath: string | null;
   firstAirYear: number | null;
+  englishName: string | null;
 }
 
 interface TmdbSearchResponse {
@@ -62,7 +64,11 @@ export async function fetchSeriesFromTmdb(tmdbId: number): Promise<TmdbSeriesDet
   url.searchParams.set('api_key', apiKey);
   url.searchParams.set('language', 'pt-BR');
 
-  const response = await fetch(url);
+  const englishUrl = new URL(`${TMDB_BASE_URL}/tv/${tmdbId}`);
+  englishUrl.searchParams.set('api_key', apiKey);
+  englishUrl.searchParams.set('language', 'en-US');
+
+  const [response, englishResponse] = await Promise.all([fetch(url), fetch(englishUrl)]);
 
   if (response.status === 404) {
     throw new SeriesNotFoundError(`Série TMDB ${tmdbId} não encontrada`);
@@ -73,6 +79,9 @@ export async function fetchSeriesFromTmdb(tmdbId: number): Promise<TmdbSeriesDet
   }
 
   const data = (await response.json()) as TmdbTvResponse;
+  const englishName = englishResponse.ok
+    ? ((await englishResponse.json()) as { name: string }).name
+    : null;
 
   const seasons = data.seasons
     .filter((season) => season.season_number > 0)
@@ -91,6 +100,7 @@ export async function fetchSeriesFromTmdb(tmdbId: number): Promise<TmdbSeriesDet
     primeiraExibicaoEm: data.first_air_date ? new Date(data.first_air_date) : null,
     idiomaOriginal: data.original_language,
     nomeOriginal: data.original_name,
+    englishName,
   };
 }
 
@@ -160,18 +170,31 @@ export async function searchSeriesOnTmdb(query: string): Promise<TmdbSeriesSumma
   url.searchParams.set('language', 'pt-BR');
   url.searchParams.set('query', query);
 
-  const response = await fetch(url);
+  const englishUrl = new URL(`${TMDB_BASE_URL}/search/tv`);
+  englishUrl.searchParams.set('api_key', apiKey);
+  englishUrl.searchParams.set('language', 'en-US');
+  englishUrl.searchParams.set('query', query);
+
+  const [response, englishResponse] = await Promise.all([fetch(url), fetch(englishUrl)]);
 
   if (!response.ok) {
     throw new Error(`Erro ao consultar TMDB: ${response.status}`);
   }
 
   const data = (await response.json()) as TmdbSearchResponse;
+  const englishNamesById = new Map<number, string>();
+  if (englishResponse.ok) {
+    const englishData = (await englishResponse.json()) as TmdbSearchResponse;
+    for (const item of englishData.results) {
+      englishNamesById.set(item.id, item.name);
+    }
+  }
 
   return data.results.map((item) => ({
     tmdbId: item.id,
     name: item.name,
     posterPath: item.poster_path,
     firstAirYear: item.first_air_date ? Number(item.first_air_date.slice(0, 4)) : null,
+    englishName: englishNamesById.get(item.id) ?? null,
   }));
 }
