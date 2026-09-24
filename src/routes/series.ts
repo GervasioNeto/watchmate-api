@@ -75,6 +75,7 @@ router.post(
           idiomaOriginal: details.idiomaOriginal,
           nomeOriginal: details.nomeOriginal,
           englishName: details.englishName,
+          adicionadoPor: userId,
         },
       });
       res.status(201).json(series);
@@ -225,6 +226,214 @@ router.get(
       }
       throw err;
     }
+  }),
+);
+
+router.put(
+  '/series/:seriesId/seasons/:season/episodes/:episode/reaction',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, season, episode } = req.params;
+    const { emoji } = req.body as { emoji?: string };
+
+    if (typeof emoji !== 'string' || emoji.trim().length === 0) {
+      res.status(400).json({ error: 'emoji é obrigatório' });
+      return;
+    }
+
+    const seasonNumber = Number(season);
+    const episodeNumber = Number(episode);
+    if (!Number.isInteger(seasonNumber) || !Number.isInteger(episodeNumber)) {
+      res.status(400).json({ error: 'season e episode devem ser números inteiros' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const reaction = await prisma.reacaoEpisodio.upsert({
+      where: {
+        serieAcompanhadaId_temporada_episodio_usuarioId: {
+          serieAcompanhadaId: seriesId,
+          temporada: seasonNumber,
+          episodio: episodeNumber,
+          usuarioId: userId,
+        },
+      },
+      update: { emoji: emoji.trim() },
+      create: {
+        serieAcompanhadaId: seriesId,
+        temporada: seasonNumber,
+        episodio: episodeNumber,
+        usuarioId: userId,
+        emoji: emoji.trim(),
+      },
+    });
+
+    res.json(reaction);
+  }),
+);
+
+router.get(
+  '/series/:seriesId/seasons/:season/episodes/:episode/reactions',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, season, episode } = req.params;
+
+    const seasonNumber = Number(season);
+    const episodeNumber = Number(episode);
+    if (!Number.isInteger(seasonNumber) || !Number.isInteger(episodeNumber)) {
+      res.status(400).json({ error: 'season e episode devem ser números inteiros' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const reactions = await prisma.reacaoEpisodio.findMany({
+      where: { serieAcompanhadaId: seriesId, temporada: seasonNumber, episodio: episodeNumber },
+      include: { usuario: { select: { id: true, nome: true } } },
+    });
+
+    res.json(reactions);
+  }),
+);
+
+router.post(
+  '/series/:seriesId/seasons/:season/episodes/:episode/comments',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, season, episode } = req.params;
+    const { texto } = req.body as { texto?: string };
+
+    if (typeof texto !== 'string' || texto.trim().length === 0) {
+      res.status(400).json({ error: 'texto é obrigatório' });
+      return;
+    }
+
+    const seasonNumber = Number(season);
+    const episodeNumber = Number(episode);
+    if (!Number.isInteger(seasonNumber) || !Number.isInteger(episodeNumber)) {
+      res.status(400).json({ error: 'season e episode devem ser números inteiros' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const comment = await prisma.comentarioEpisodio.create({
+      data: {
+        serieAcompanhadaId: seriesId,
+        temporada: seasonNumber,
+        episodio: episodeNumber,
+        usuarioId: userId,
+        texto: texto.trim(),
+      },
+      include: { usuario: { select: { id: true, nome: true } } },
+    });
+
+    res.status(201).json(comment);
+  }),
+);
+
+router.get(
+  '/series/:seriesId/seasons/:season/episodes/:episode/comments',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, season, episode } = req.params;
+
+    const seasonNumber = Number(season);
+    const episodeNumber = Number(episode);
+    if (!Number.isInteger(seasonNumber) || !Number.isInteger(episodeNumber)) {
+      res.status(400).json({ error: 'season e episode devem ser números inteiros' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const comments = await prisma.comentarioEpisodio.findMany({
+      where: { serieAcompanhadaId: seriesId, temporada: seasonNumber, episodio: episodeNumber },
+      include: { usuario: { select: { id: true, nome: true } } },
+      orderBy: { criadoEm: 'asc' },
+    });
+
+    res.json(comments);
+  }),
+);
+
+router.delete(
+  '/series/:seriesId/seasons/:season/episodes/:episode/comments/:commentId',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, commentId } = req.params;
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const comment = await prisma.comentarioEpisodio.findUnique({ where: { id: commentId } });
+    if (!comment || comment.serieAcompanhadaId !== seriesId) {
+      res.status(404).json({ error: 'Comentário não encontrado' });
+      return;
+    }
+
+    if (comment.usuarioId !== userId) {
+      res.status(403).json({ error: 'Você só pode apagar seus próprios comentários' });
+      return;
+    }
+
+    await prisma.comentarioEpisodio.delete({ where: { id: commentId } });
+    res.status(204).send();
   }),
 );
 
