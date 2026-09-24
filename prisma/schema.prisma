@@ -16,8 +16,11 @@ model Usuario {
   nome     String?
   criadoEm DateTime @default(now()) @map("criado_em")
 
-  membroDoGrupo      MembroDoGrupo?
-  progressoEpisodios ProgressoEpisodio[] @relation("EpisodioMarcadoPor")
+  membroDoGrupo       MembroDoGrupo?
+  progressoEpisodios  ProgressoEpisodio[]  @relation("EpisodioMarcadoPor")
+  seriesAdicionadas   SerieAcompanhada[]   @relation("SerieAdicionadaPor")
+  reacoesEpisodio     ReacaoEpisodio[]
+  comentariosEpisodio ComentarioEpisodio[]
 
   @@map("usuarios")
 }
@@ -66,10 +69,14 @@ model SerieAcompanhada {
   idiomaOriginal     String?   @map("idioma_original")
   nomeOriginal       String?   @map("nome_original")
   englishName        String?   @map("english_name")
+  adicionadoPor      String?   @map("adicionado_por") @db.Uuid
   adicionadoEm       DateTime  @default(now()) @map("adicionado_em")
 
-  grupo              Grupo               @relation(fields: [grupoId], references: [id], onDelete: Cascade)
-  progressoEpisodios ProgressoEpisodio[]
+  grupo                Grupo                @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  adicionadoPorUsuario Usuario?             @relation("SerieAdicionadaPor", fields: [adicionadoPor], references: [id], onDelete: SetNull)
+  progressoEpisodios   ProgressoEpisodio[]
+  reacoesEpisodio      ReacaoEpisodio[]
+  comentariosEpisodio  ComentarioEpisodio[]
 
   @@unique([grupoId, tmdbId])
   @@map("series_acompanhadas")
@@ -88,4 +95,38 @@ model ProgressoEpisodio {
 
   @@unique([serieAcompanhadaId, temporada, episodio])
   @@map("progresso_episodios")
+}
+
+// Uma reação por pessoa por episódio - pode ser trocada (upsert), não empilha.
+model ReacaoEpisodio {
+  id                 String   @id @default(uuid()) @db.Uuid
+  serieAcompanhadaId String   @map("serie_acompanhada_id") @db.Uuid
+  temporada          Int
+  episodio           Int
+  usuarioId          String   @map("usuario_id") @db.Uuid
+  emoji              String
+  criadoEm           DateTime @default(now()) @map("criado_em")
+  atualizadoEm       DateTime @updatedAt @map("atualizado_em")
+
+  serieAcompanhada SerieAcompanhada @relation(fields: [serieAcompanhadaId], references: [id], onDelete: Cascade)
+  usuario          Usuario          @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([serieAcompanhadaId, temporada, episodio, usuarioId])
+  @@map("reacoes_episodio")
+}
+
+// Comentários livres por episódio - vários por pessoa, em ordem cronológica.
+model ComentarioEpisodio {
+  id                 String   @id @default(uuid()) @db.Uuid
+  serieAcompanhadaId String   @map("serie_acompanhada_id") @db.Uuid
+  temporada          Int
+  episodio           Int
+  usuarioId          String   @map("usuario_id") @db.Uuid
+  texto              String
+  criadoEm           DateTime @default(now()) @map("criado_em")
+
+  serieAcompanhada SerieAcompanhada @relation(fields: [serieAcompanhadaId], references: [id], onDelete: Cascade)
+  usuario          Usuario          @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("comentarios_episodio")
 }
