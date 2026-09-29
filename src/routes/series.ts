@@ -8,6 +8,7 @@ import {
   fetchSeriesFromTmdb,
   searchSeriesOnTmdb,
   SeriesNotFoundError,
+  TmdbSeasonSummary,
 } from '../lib/tmdb';
 import { authenticate } from '../middleware/auth';
 
@@ -191,6 +192,78 @@ router.put(
   }),
 );
 
+router.put(
+  '/series/:seriesId/seasons/:season/watched',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, season } = req.params;
+    const { watched } = req.body as { watched?: boolean };
+
+    if (typeof watched !== 'boolean') {
+      res.status(400).json({ error: 'watched é obrigatório e deve ser um booleano' });
+      return;
+    }
+
+    const seasonNumber = Number(season);
+    if (!Number.isInteger(seasonNumber)) {
+      res.status(400).json({ error: 'season deve ser um número inteiro' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const temporadas = series.temporadas as unknown as TmdbSeasonSummary[];
+    const seasonInfo = temporadas.find((t) => t.numero === seasonNumber);
+    if (!seasonInfo) {
+      res.status(404).json({ error: 'Temporada não encontrada' });
+      return;
+    }
+
+    const assistidoEm = watched ? new Date() : null;
+    const marcadoPor = watched ? userId : null;
+
+    await prisma.$transaction(
+      Array.from({ length: seasonInfo.totalEpisodios }, (_, i) => i + 1).map((episodeNumber) =>
+        prisma.progressoEpisodio.upsert({
+          where: {
+            serieAcompanhadaId_temporada_episodio: {
+              serieAcompanhadaId: seriesId,
+              temporada: seasonNumber,
+              episodio: episodeNumber,
+            },
+          },
+          update: { assistidoEm, marcadoPor },
+          create: {
+            serieAcompanhadaId: seriesId,
+            temporada: seasonNumber,
+            episodio: episodeNumber,
+            assistidoEm,
+            marcadoPor,
+          },
+        }),
+      ),
+    );
+
+    const progress = await prisma.progressoEpisodio.findMany({
+      where: { serieAcompanhadaId: seriesId, temporada: seasonNumber },
+      orderBy: { episodio: 'asc' },
+    });
+
+    res.json(progress);
+  }),
+);
+
 router.get(
   '/series/:seriesId/seasons/:season/episodes',
   authenticate,
@@ -313,6 +386,41 @@ router.get(
     const reactions = await prisma.reacaoEpisodio.findMany({
       where: { serieAcompanhadaId: seriesId, temporada: seasonNumber, episodio: episodeNumber },
       include: { usuario: { select: { id: true, nome: true } } },
+    });
+
+    res.json(reactions);
+  }),
+);
+
+router.get(
+  '/series/:seriesId/seasons/:season/reactions',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, season } = req.params;
+
+    const seasonNumber = Number(season);
+    if (!Number.isInteger(seasonNumber)) {
+      res.status(400).json({ error: 'season deve ser um número inteiro' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const reactions = await prisma.reacaoEpisodio.findMany({
+      where: { serieAcompanhadaId: seriesId, temporada: seasonNumber },
+      include: { usuario: { select: { id: true, nome: true } } },
+      orderBy: { episodio: 'asc' },
     });
 
     res.json(reactions);
