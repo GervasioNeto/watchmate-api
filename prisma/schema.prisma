@@ -11,10 +11,12 @@ datasource db {
 // O id espelha o auth.users.id do Supabase Auth (não é gerado pelo Prisma).
 // A linha em "usuarios" é criada pela aplicação após o cadastro no Supabase.
 model Usuario {
-  id       String   @id @db.Uuid
-  email    String   @unique
-  nome     String?
-  criadoEm DateTime @default(now()) @map("criado_em")
+  id            String   @id @db.Uuid
+  email         String   @unique
+  nome          String?
+  avatarEstilo  String?  @map("avatar_estilo")
+  avatarSemente String?  @map("avatar_semente")
+  criadoEm      DateTime @default(now()) @map("criado_em")
 
   membroDoGrupo       MembroDoGrupo?
   progressoEpisodios  ProgressoEpisodio[]  @relation("EpisodioMarcadoPor")

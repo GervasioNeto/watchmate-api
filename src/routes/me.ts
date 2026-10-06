@@ -5,6 +5,8 @@ import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
+const ESTILOS_AVATAR = ['fun-emoji'] as const;
+
 router.get(
   '/me',
   authenticate,
@@ -35,6 +37,30 @@ router.patch(
     const user = await prisma.usuario.update({
       where: { id: req.user!.id },
       data: { nome: nome.trim() },
+    });
+    res.json(user);
+  }),
+);
+
+router.patch(
+  '/me/avatar',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const { estilo, semente } = req.body as { estilo?: string; semente?: string };
+
+    if (!ESTILOS_AVATAR.includes(estilo as (typeof ESTILOS_AVATAR)[number])) {
+      res.status(400).json({ error: 'Estilo de avatar inválido' });
+      return;
+    }
+
+    if (typeof semente !== 'string' || semente.length < 1 || semente.length > 40) {
+      res.status(400).json({ error: 'Semente do avatar inválida' });
+      return;
+    }
+
+    const user = await prisma.usuario.update({
+      where: { id: req.user!.id },
+      data: { avatarEstilo: estilo, avatarSemente: semente },
     });
     res.json(user);
   }),
