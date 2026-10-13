@@ -197,12 +197,19 @@ export function isSpoilerFor(
 // Desmarcar apaga sempre o progresso de quem clicou, mas no dos outros membros só o que
 // foi registrado por quem clicou ou marcado como "juntos" - assim desfazer um "nós dois"
 // marcado por engano não apaga um episódio que o parceiro tinha marcado sozinho.
+//
+// `together` diz se a marcação foi "assistimos juntos":
+// - true: os registros novos nascem como juntos e os que já existiam (ex.: você tinha
+//   marcado sozinho antes) passam a ser juntos também - "Leila viu comigo".
+// - false: os registros novos nascem como não juntos - "Leila viu em outro momento".
+// - ausente: comportamento anterior (juntos quando a marcação é para mais de uma pessoa,
+//   sem mexer nos registros que já existiam).
 export async function setEpisodesWatched(
   seriesId: string,
   episodes: Array<{ temporada: number; episodio: number }>,
-  options: { watched: boolean; targetIds: string[]; markedBy: string },
+  options: { watched: boolean; targetIds: string[]; markedBy: string; together?: boolean },
 ) {
-  const { watched, targetIds, markedBy } = options;
+  const { watched, targetIds, markedBy, together } = options;
   if (episodes.length === 0 || targetIds.length === 0) return;
 
   if (!watched) {
@@ -231,8 +238,8 @@ export async function setEpisodesWatched(
   }
 
   const assistidoEm = new Date();
-  const juntos = targetIds.length > 1;
-  await prisma.progressoEpisodio.createMany({
+  const juntos = together ?? targetIds.length > 1;
+  const create = prisma.progressoEpisodio.createMany({
     data: targetIds.flatMap((usuarioId) =>
       episodes.map(({ temporada, episodio }) => ({
         serieAcompanhadaId: seriesId,
@@ -246,4 +253,23 @@ export async function setEpisodesWatched(
     ),
     skipDuplicates: true,
   });
+
+  if (together !== true) {
+    await create;
+    return;
+  }
+
+  // Só com "juntos" explícito os registros que já existiam também viram juntos.
+  await prisma.$transaction([
+    create,
+    prisma.progressoEpisodio.updateMany({
+      where: {
+        serieAcompanhadaId: seriesId,
+        usuarioId: { in: targetIds },
+        juntos: false,
+        OR: episodes.map(({ temporada, episodio }) => ({ temporada, episodio })),
+      },
+      data: { juntos: true },
+    }),
+  ]);
 }

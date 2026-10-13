@@ -187,7 +187,11 @@ router.put(
   asyncHandler(async (req, res) => {
     const userId = req.user!.id;
     const { seriesId, season, episode } = req.params;
-    const { watched, scope: rawScope } = req.body as { watched?: boolean; scope?: unknown };
+    const {
+      watched,
+      scope: rawScope,
+      juntos,
+    } = req.body as { watched?: boolean; scope?: unknown; juntos?: unknown };
 
     if (typeof watched !== 'boolean') {
       res.status(400).json({ error: 'watched é obrigatório e deve ser um booleano' });
@@ -197,6 +201,11 @@ router.put(
     const scope = parseScope(rawScope);
     if (scope === null) {
       res.status(400).json({ error: "scope deve ser 'me' ou 'both'" });
+      return;
+    }
+
+    if (juntos !== undefined && typeof juntos !== 'boolean') {
+      res.status(400).json({ error: 'juntos deve ser um booleano' });
       return;
     }
 
@@ -234,10 +243,16 @@ router.put(
       members.map((member) => member.id),
     );
 
+    if (juntos === true && targetIds.length < 2) {
+      res.status(400).json({ error: 'juntos só vale quando a marcação é para os dois' });
+      return;
+    }
+
     await setEpisodesWatched(seriesId, [{ temporada: seasonNumber, episodio: episodeNumber }], {
       watched,
       targetIds,
       markedBy: userId,
+      together: juntos,
     });
 
     res.json(await loadProgressSummary(series));
@@ -250,7 +265,11 @@ router.put(
   asyncHandler(async (req, res) => {
     const userId = req.user!.id;
     const { seriesId, season } = req.params;
-    const { watched, scope: rawScope } = req.body as { watched?: boolean; scope?: unknown };
+    const {
+      watched,
+      scope: rawScope,
+      juntos,
+    } = req.body as { watched?: boolean; scope?: unknown; juntos?: unknown };
 
     if (typeof watched !== 'boolean') {
       res.status(400).json({ error: 'watched é obrigatório e deve ser um booleano' });
@@ -260,6 +279,11 @@ router.put(
     const scope = parseScope(rawScope);
     if (scope === null) {
       res.status(400).json({ error: "scope deve ser 'me' ou 'both'" });
+      return;
+    }
+
+    if (juntos !== undefined && typeof juntos !== 'boolean') {
+      res.status(400).json({ error: 'juntos deve ser um booleano' });
       return;
     }
 
@@ -296,11 +320,21 @@ router.put(
       members.map((member) => member.id),
     );
 
+    if (juntos === true && targetIds.length < 2) {
+      res.status(400).json({ error: 'juntos só vale quando a marcação é para os dois' });
+      return;
+    }
+
     const episodes = Array.from({ length: seasonInfo.totalEpisodios }, (_, i) => ({
       temporada: seasonNumber,
       episodio: i + 1,
     }));
-    await setEpisodesWatched(seriesId, episodes, { watched, targetIds, markedBy: userId });
+    await setEpisodesWatched(seriesId, episodes, {
+      watched,
+      targetIds,
+      markedBy: userId,
+      together: juntos,
+    });
 
     res.json(await loadProgressSummary(series));
   }),
