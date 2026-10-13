@@ -18,6 +18,8 @@ CREATE TABLE "usuarios" (
     "id" UUID NOT NULL,
     "email" TEXT NOT NULL,
     "nome" TEXT,
+    "avatar_estilo" TEXT,
+    "avatar_semente" TEXT,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "usuarios_pkey" PRIMARY KEY ("id")
