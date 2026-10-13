@@ -19,7 +19,8 @@ model Usuario {
   criadoEm      DateTime @default(now()) @map("criado_em")
 
   membroDoGrupo       MembroDoGrupo?
-  progressoEpisodios  ProgressoEpisodio[]  @relation("EpisodioMarcadoPor")
+  progressoEpisodios  ProgressoEpisodio[]  @relation("ProgressoDoUsuario")
+  episodiosMarcados   ProgressoEpisodio[]  @relation("EpisodioMarcadoPor")
   seriesAdicionadas   SerieAcompanhada[]   @relation("SerieAdicionadaPor")
   reacoesEpisodio     ReacaoEpisodio[]
   comentariosEpisodio ComentarioEpisodio[]
@@ -53,9 +54,18 @@ model MembroDoGrupo {
   @@map("membros_do_grupo")
 }
 
+// Define o comportamento padrão ao marcar um episódio: JUNTOS marca para todos os
+// membros do grupo; SEPARADOS marca só para quem clicou. Dá pra sobrescrever por
+// requisição via `scope`.
+enum ModoAcompanhamento {
+  JUNTOS
+  SEPARADOS
+}
+
 model SerieAcompanhada {
-  id                 String    @id @default(uuid()) @db.Uuid
-  grupoId            String    @map("grupo_id") @db.Uuid
+  id                 String             @id @default(uuid()) @db.Uuid
+  grupoId            String             @map("grupo_id") @db.Uuid
+  modo               ModoAcompanhamento @default(JUNTOS)
   tmdbId             Int       @map("tmdb_id")
   nome               String
   posterPath         String?   @map("poster_path")
@@ -84,18 +94,26 @@ model SerieAcompanhada {
   @@map("series_acompanhadas")
 }
 
+// Progresso individual: uma linha por pessoa por episódio assistido.
+// Desmarcar apaga a linha. O "progresso em comum" é a interseção entre os membros.
 model ProgressoEpisodio {
-  id                 String    @id @default(uuid()) @db.Uuid
-  serieAcompanhadaId String    @map("serie_acompanhada_id") @db.Uuid
+  id                 String   @id @default(uuid()) @db.Uuid
+  serieAcompanhadaId String   @map("serie_acompanhada_id") @db.Uuid
   temporada          Int
   episodio           Int
-  assistidoEm        DateTime? @map("assistido_em")
-  marcadoPor         String?   @map("marcado_por") @db.Uuid
+  // Dono do progresso (quem assistiu).
+  usuarioId          String   @map("usuario_id") @db.Uuid
+  assistidoEm        DateTime @map("assistido_em")
+  // Quem registrou - pode ser o parceiro, ao marcar "assistimos juntos".
+  marcadoPor         String?  @map("marcado_por") @db.Uuid
+  // true quando foi marcado para o grupo todo de uma vez (assistiram juntos).
+  juntos             Boolean  @default(false)
 
   serieAcompanhada  SerieAcompanhada @relation(fields: [serieAcompanhadaId], references: [id], onDelete: Cascade)
+  usuario           Usuario          @relation("ProgressoDoUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
   marcadoPorUsuario Usuario?         @relation("EpisodioMarcadoPor", fields: [marcadoPor], references: [id], onDelete: SetNull)
 
-  @@unique([serieAcompanhadaId, temporada, episodio])
+  @@unique([serieAcompanhadaId, usuarioId, temporada, episodio])
   @@map("progresso_episodios")
 }
 
