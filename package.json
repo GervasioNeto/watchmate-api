@@ -8,6 +8,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "predev": "prisma generate",
     "dev": "tsx watch src/server.ts",
     "postinstall": "prisma generate",
     "build": "tsc",

@@ -1,13 +1,24 @@
-import { Prisma } from '@prisma/client';
+import { ModoAcompanhamento, Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { asyncHandler } from '../lib/asyncHandler';
 import { getUserGroupId } from '../lib/groupMembership';
 import prisma from '../lib/prisma';
 import {
+  episodeKey,
+  getGroupMembers,
+  getWatchedEpisodeKeys,
+  isSpoilerFor,
+  loadProgressSummary,
+  parseScope,
+  resolveTargetUserIds,
+  setEpisodesWatched,
+} from '../lib/progress';
+import {
   fetchSeasonFromTmdb,
   fetchSeriesFromTmdb,
   searchSeriesOnTmdb,
   SeriesNotFoundError,
+  TmdbSeasonSummary,
 } from '../lib/tmdb';
 import { authenticate } from '../middleware/auth';
 
@@ -34,10 +45,15 @@ router.post(
   authenticate,
   asyncHandler(async (req, res) => {
     const userId = req.user!.id;
-    const { tmdbId } = req.body as { tmdbId?: number };
+    const { tmdbId, modo } = req.body as { tmdbId?: number; modo?: unknown };
 
     if (!Number.isInteger(tmdbId)) {
       res.status(400).json({ error: 'tmdbId é obrigatório e deve ser um número inteiro' });
+      return;
+    }
+
+    if (modo !== undefined && !isModo(modo)) {
+      res.status(400).json({ error: 'modo deve ser JUNTOS ou SEPARADOS' });
       return;
     }
 
@@ -76,6 +92,7 @@ router.post(
           nomeOriginal: details.nomeOriginal,
           englishName: details.englishName,
           adicionadoPor: userId,
+          modo,
         },
       });
       res.status(201).json(series);
@@ -134,16 +151,61 @@ router.delete(
   }),
 );
 
+router.patch(
+  '/series/:id',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { modo } = req.body as { modo?: unknown };
+
+    if (!isModo(modo)) {
+      res.status(400).json({ error: 'modo é obrigatório e deve ser JUNTOS ou SEPARADOS' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const updated = await prisma.serieAcompanhada.update({ where: { id }, data: { modo } });
+    res.json(updated);
+  }),
+);
+
 router.put(
   '/series/:seriesId/seasons/:season/episodes/:episode',
   authenticate,
   asyncHandler(async (req, res) => {
     const userId = req.user!.id;
     const { seriesId, season, episode } = req.params;
-    const { watched } = req.body as { watched?: boolean };
+    const {
+      watched,
+      scope: rawScope,
+      juntos,
+    } = req.body as { watched?: boolean; scope?: unknown; juntos?: unknown };
 
     if (typeof watched !== 'boolean') {
       res.status(400).json({ error: 'watched é obrigatório e deve ser um booleano' });
+      return;
+    }
+
+    const scope = parseScope(rawScope);
+    if (scope === null) {
+      res.status(400).json({ error: "scope deve ser 'me' ou 'both'" });
+      return;
+    }
+
+    if (juntos !== undefined && typeof juntos !== 'boolean') {
+      res.status(400).json({ error: 'juntos deve ser um booleano' });
       return;
     }
 
@@ -166,28 +228,162 @@ router.put(
       return;
     }
 
-    const progress = await prisma.progressoEpisodio.upsert({
-      where: {
-        serieAcompanhadaId_temporada_episodio: {
-          serieAcompanhadaId: seriesId,
-          temporada: seasonNumber,
-          episodio: episodeNumber,
-        },
-      },
-      update: {
-        assistidoEm: watched ? new Date() : null,
-        marcadoPor: watched ? userId : null,
-      },
-      create: {
-        serieAcompanhadaId: seriesId,
-        temporada: seasonNumber,
-        episodio: episodeNumber,
-        assistidoEm: watched ? new Date() : null,
-        marcadoPor: watched ? userId : null,
-      },
+    const temporadas = series.temporadas as unknown as TmdbSeasonSummary[];
+    const seasonInfo = temporadas.find((t) => t.numero === seasonNumber);
+    if (!seasonInfo || episodeNumber < 1 || episodeNumber > seasonInfo.totalEpisodios) {
+      res.status(404).json({ error: 'Episódio não encontrado' });
+      return;
+    }
+
+    const members = await getGroupMembers(groupId);
+    const targetIds = resolveTargetUserIds(
+      series.modo,
+      scope,
+      userId,
+      members.map((member) => member.id),
+    );
+
+    if (juntos === true && targetIds.length < 2) {
+      res.status(400).json({ error: 'juntos só vale quando a marcação é para os dois' });
+      return;
+    }
+
+    await setEpisodesWatched(seriesId, [{ temporada: seasonNumber, episodio: episodeNumber }], {
+      watched,
+      targetIds,
+      markedBy: userId,
+      together: juntos,
     });
 
-    res.json(progress);
+    res.json(await loadProgressSummary(series));
+  }),
+);
+
+router.put(
+  '/series/:seriesId/seasons/:season/watched',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, season } = req.params;
+    const {
+      watched,
+      scope: rawScope,
+      juntos,
+    } = req.body as { watched?: boolean; scope?: unknown; juntos?: unknown };
+
+    if (typeof watched !== 'boolean') {
+      res.status(400).json({ error: 'watched é obrigatório e deve ser um booleano' });
+      return;
+    }
+
+    const scope = parseScope(rawScope);
+    if (scope === null) {
+      res.status(400).json({ error: "scope deve ser 'me' ou 'both'" });
+      return;
+    }
+
+    if (juntos !== undefined && typeof juntos !== 'boolean') {
+      res.status(400).json({ error: 'juntos deve ser um booleano' });
+      return;
+    }
+
+    const seasonNumber = Number(season);
+    if (!Number.isInteger(seasonNumber)) {
+      res.status(400).json({ error: 'season deve ser um número inteiro' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const temporadas = series.temporadas as unknown as TmdbSeasonSummary[];
+    const seasonInfo = temporadas.find((t) => t.numero === seasonNumber);
+    if (!seasonInfo) {
+      res.status(404).json({ error: 'Temporada não encontrada' });
+      return;
+    }
+
+    const members = await getGroupMembers(groupId);
+    const targetIds = resolveTargetUserIds(
+      series.modo,
+      scope,
+      userId,
+      members.map((member) => member.id),
+    );
+
+    if (juntos === true && targetIds.length < 2) {
+      res.status(400).json({ error: 'juntos só vale quando a marcação é para os dois' });
+      return;
+    }
+
+    const episodes = Array.from({ length: seasonInfo.totalEpisodios }, (_, i) => ({
+      temporada: seasonNumber,
+      episodio: i + 1,
+    }));
+    await setEpisodesWatched(seriesId, episodes, {
+      watched,
+      targetIds,
+      markedBy: userId,
+      together: juntos,
+    });
+
+    res.json(await loadProgressSummary(series));
+  }),
+);
+
+// "Alcancei": marca para quem chamou todos os episódios que algum outro membro já viu
+// e ele ainda não - para os dois voltarem a estar no mesmo ponto.
+router.post(
+  '/series/:seriesId/catch-up',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId } = req.params;
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const members = await getGroupMembers(groupId);
+    const partnerIds = members.map((member) => member.id).filter((id) => id !== userId);
+    const [mine, partners] = await Promise.all([
+      getWatchedEpisodeKeys(seriesId, userId),
+      prisma.progressoEpisodio.findMany({
+        where: { serieAcompanhadaId: seriesId, usuarioId: { in: partnerIds } },
+        select: { temporada: true, episodio: true },
+      }),
+    ]);
+
+    const missing = new Map<string, { temporada: number; episodio: number }>();
+    for (const row of partners) {
+      const key = episodeKey(row.temporada, row.episodio);
+      if (!mine.has(key)) missing.set(key, row);
+    }
+
+    await setEpisodesWatched(seriesId, [...missing.values()], {
+      watched: true,
+      targetIds: [userId],
+      markedBy: userId,
+    });
+
+    res.json(await loadProgressSummary(series));
   }),
 );
 
@@ -310,12 +506,53 @@ router.get(
       return;
     }
 
-    const reactions = await prisma.reacaoEpisodio.findMany({
-      where: { serieAcompanhadaId: seriesId, temporada: seasonNumber, episodio: episodeNumber },
-      include: { usuario: { select: { id: true, nome: true } } },
-    });
+    const [reactions, watchedKeys] = await Promise.all([
+      prisma.reacaoEpisodio.findMany({
+        where: { serieAcompanhadaId: seriesId, temporada: seasonNumber, episodio: episodeNumber },
+        include: { usuario: { select: { id: true, nome: true } } },
+      }),
+      getWatchedEpisodeKeys(seriesId, userId, seasonNumber),
+    ]);
 
-    res.json(reactions);
+    res.json(reactions.map((reaction) => hideReactionSpoiler(reaction, userId, watchedKeys)));
+  }),
+);
+
+router.get(
+  '/series/:seriesId/seasons/:season/reactions',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, season } = req.params;
+
+    const seasonNumber = Number(season);
+    if (!Number.isInteger(seasonNumber)) {
+      res.status(400).json({ error: 'season deve ser um número inteiro' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const [reactions, watchedKeys] = await Promise.all([
+      prisma.reacaoEpisodio.findMany({
+        where: { serieAcompanhadaId: seriesId, temporada: seasonNumber },
+        include: { usuario: { select: { id: true, nome: true } } },
+        orderBy: { episodio: 'asc' },
+      }),
+      getWatchedEpisodeKeys(seriesId, userId, seasonNumber),
+    ]);
+
+    res.json(reactions.map((reaction) => hideReactionSpoiler(reaction, userId, watchedKeys)));
   }),
 );
 
@@ -392,13 +629,22 @@ router.get(
       return;
     }
 
-    const comments = await prisma.comentarioEpisodio.findMany({
-      where: { serieAcompanhadaId: seriesId, temporada: seasonNumber, episodio: episodeNumber },
-      include: { usuario: { select: { id: true, nome: true } } },
-      orderBy: { criadoEm: 'asc' },
-    });
+    const [comments, watchedKeys] = await Promise.all([
+      prisma.comentarioEpisodio.findMany({
+        where: { serieAcompanhadaId: seriesId, temporada: seasonNumber, episodio: episodeNumber },
+        include: { usuario: { select: { id: true, nome: true } } },
+        orderBy: { criadoEm: 'asc' },
+      }),
+      getWatchedEpisodeKeys(seriesId, userId, seasonNumber),
+    ]);
 
-    res.json(comments);
+    res.json(
+      comments.map((comment) =>
+        isSpoilerFor(userId, watchedKeys, comment)
+          ? { ...comment, texto: null, oculto: true }
+          : { ...comment, oculto: false },
+      ),
+    );
   }),
 );
 
@@ -456,13 +702,24 @@ router.get(
       return;
     }
 
-    const progress = await prisma.progressoEpisodio.findMany({
-      where: { serieAcompanhadaId: seriesId },
-      orderBy: [{ temporada: 'asc' }, { episodio: 'asc' }],
-    });
-
-    res.json(progress);
+    res.json(await loadProgressSummary(series));
   }),
 );
+
+// Reações/comentários do parceiro em episódios que você ainda não viu voltam sem o
+// conteúdo (oculto: true) - o front mostra "assista para ver" em vez de dar spoiler.
+function hideReactionSpoiler<T extends { usuarioId: string; temporada: number; episodio: number }>(
+  reaction: T,
+  viewerId: string,
+  watchedKeys: Set<string>,
+) {
+  return isSpoilerFor(viewerId, watchedKeys, reaction)
+    ? { ...reaction, emoji: null, oculto: true }
+    : { ...reaction, oculto: false };
+}
+
+function isModo(value: unknown): value is ModoAcompanhamento {
+  return value === ModoAcompanhamento.JUNTOS || value === ModoAcompanhamento.SEPARADOS;
+}
 
 export default router;
