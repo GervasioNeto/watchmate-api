@@ -15,6 +15,7 @@ import {
 } from '../lib/progress';
 import { loadInterestedIds, loadSeriesList, toSeriesResponse } from '../lib/seriesList';
 import { snapshotFields } from '../lib/seriesSnapshot';
+import { notify } from '../notifications/notify';
 import {
   fetchSeasonFromTmdb,
   fetchSeriesFromTmdb,
@@ -95,6 +96,7 @@ router.post(
       });
       // Série nova: ninguém marcou "quero ver" nem reagiu ainda.
       res.status(201).json(toSeriesResponse(series, [], null));
+      void notify({ type: 'series-added', actorId: userId, seriesId: series.id });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         res.status(409).json({ error: 'Essa série já está sendo acompanhada pelo grupo' });
@@ -276,6 +278,13 @@ router.put(
       return;
     }
 
+    // Avisa o par só se o episódio é novo para você: marcar de novo não avisa de novo.
+    const notifyPartner =
+      isWatchingAlone(watched, targetIds, userId) &&
+      !(await getWatchedEpisodeKeys(seriesId, userId, seasonNumber)).has(
+        episodeKey(seasonNumber, episodeNumber),
+      );
+
     await setEpisodesWatched(seriesId, [{ temporada: seasonNumber, episodio: episodeNumber }], {
       watched,
       targetIds,
@@ -284,6 +293,16 @@ router.put(
     });
 
     res.json(await loadProgressSummary(series));
+
+    if (notifyPartner) {
+      void notify({
+        type: 'episode-watched',
+        actorId: userId,
+        seriesId,
+        season: seasonNumber,
+        episode: episodeNumber,
+      });
+    }
   }),
 );
 
@@ -357,6 +376,16 @@ router.put(
       temporada: seasonNumber,
       episodio: i + 1,
     }));
+
+    // Avisa o par só se a temporada tinha algum episódio que você ainda não tinha visto.
+    let notifyPartner = false;
+    if (isWatchingAlone(watched, targetIds, userId)) {
+      const alreadyWatched = await getWatchedEpisodeKeys(seriesId, userId, seasonNumber);
+      notifyPartner = episodes.some(
+        ({ temporada, episodio }) => !alreadyWatched.has(episodeKey(temporada, episodio)),
+      );
+    }
+
     await setEpisodesWatched(seriesId, episodes, {
       watched,
       targetIds,
@@ -365,6 +394,10 @@ router.put(
     });
 
     res.json(await loadProgressSummary(series));
+
+    if (notifyPartner) {
+      void notify({ type: 'season-finished', actorId: userId, seriesId, season: seasonNumber });
+    }
   }),
 );
 
@@ -748,6 +781,12 @@ function hideReactionSpoiler<T extends { usuarioId: string; temporada: number; e
 
 function isModo(value: unknown): value is ModoAcompanhamento {
   return value === ModoAcompanhamento.JUNTOS || value === ModoAcompanhamento.SEPARADOS;
+}
+
+// O aviso de episódio vai para o par só quando você marcou como visto só para você:
+// vendo juntos, ele estava lá e não precisa ser avisado.
+function isWatchingAlone(watched: boolean, targetIds: string[], userId: string): boolean {
+  return watched && targetIds.length === 1 && targetIds[0] === userId;
 }
 
 export default router;
