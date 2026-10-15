@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { asyncHandler } from '../lib/asyncHandler';
 import { generateInviteCode } from '../lib/inviteCode';
+import { isPersonColor, pickFreeColor } from '../lib/personColors';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 
@@ -13,6 +14,15 @@ const MAX_CODE_ATTEMPTS = 5;
 const MAX_RECADO = 80;
 
 type RecadoData = { recado: string; recadoEm: Date } | { recado: null; recadoEm: null };
+
+// Violação de um índice único que inclui a coluna `column`.
+function isUniqueOn(err: unknown, column: string): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === 'P2002' &&
+    ((err.meta?.target as string[] | string | undefined) ?? '').includes(column)
+  );
+}
 
 // Atualiza o recado de quem chamou. Devolve null se a pessoa não está em nenhum grupo.
 async function saveOwnNote(userId: string, data: RecadoData) {
@@ -45,7 +55,7 @@ router.post(
         const group = await prisma.grupo.create({
           data: {
             codigoConvite: generateInviteCode(),
-            membros: { create: { usuarioId: userId } },
+            membros: { create: { usuarioId: userId, cor: pickFreeColor([]) } },
           },
           include: { membros: true },
         });
@@ -102,14 +112,27 @@ router.post(
       return;
     }
 
-    try {
-      await prisma.membroDoGrupo.create({ data: { grupoId: group.id, usuarioId: userId } });
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        res.status(409).json({ error: 'Você já faz parte de um grupo' });
-        return;
+    // Entra com uma cor que ninguém do grupo usa. Se o par trocar de cor bem nessa hora e
+    // pegar a mesma, o índice único recusa e a cor é escolhida de novo.
+    let taken = group.membros.map((member) => member.cor);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await prisma.membroDoGrupo.create({
+          data: { grupoId: group.id, usuarioId: userId, cor: pickFreeColor(taken) },
+        });
+        break;
+      } catch (err) {
+        if (isUniqueOn(err, 'cor') && attempt === 0) {
+          const members = await prisma.membroDoGrupo.findMany({ where: { grupoId: group.id } });
+          taken = members.map((member) => member.cor);
+          continue;
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          res.status(409).json({ error: 'Você já faz parte de um grupo' });
+          return;
+        }
+        throw err;
       }
-      throw err;
     }
 
     const updatedGroup = await prisma.grupo.findUnique({
@@ -166,6 +189,44 @@ router.patch(
     });
 
     res.json(group);
+  }),
+);
+
+// A sua cor na dupla, escolhida na paleta. Não pode ser a do par: o índice único do banco
+// garante isso mesmo se os dois escolherem a mesma cor ao mesmo tempo. Devolve o seu
+// membro com a cor nova.
+router.patch(
+  '/groups/me/color',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { cor } = req.body as { cor?: unknown };
+
+    if (!isPersonColor(cor)) {
+      res.status(400).json({ error: 'cor deve ser uma das cores da paleta' });
+      return;
+    }
+
+    const membership = await prisma.membroDoGrupo.findUnique({ where: { usuarioId: userId } });
+    if (!membership) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    if (membership.cor === cor) {
+      res.json(membership);
+      return;
+    }
+
+    try {
+      res.json(await prisma.membroDoGrupo.update({ where: { id: membership.id }, data: { cor } }));
+    } catch (err) {
+      if (isUniqueOn(err, 'cor')) {
+        res.status(409).json({ error: 'Seu par já usa essa cor' });
+        return;
+      }
+      throw err;
+    }
   }),
 );
 

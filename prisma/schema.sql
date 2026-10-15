@@ -46,6 +46,7 @@ CREATE TABLE "membros_do_grupo" (
     "entrou_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "recado" TEXT,
     "recado_em" TIMESTAMP(3),
+    "cor" TEXT,
 
     CONSTRAINT "membros_do_grupo_pkey" PRIMARY KEY ("id")
 );
@@ -148,6 +149,9 @@ CREATE UNIQUE INDEX "grupos_codigo_convite_key" ON "grupos"("codigo_convite");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "membros_do_grupo_usuario_id_key" ON "membros_do_grupo"("usuario_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "membros_do_grupo_grupo_id_cor_key" ON "membros_do_grupo"("grupo_id", "cor");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "series_acompanhadas_grupo_id_tmdb_id_key" ON "series_acompanhadas"("grupo_id", "tmdb_id");
