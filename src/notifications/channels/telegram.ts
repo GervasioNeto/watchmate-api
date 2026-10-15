@@ -1,5 +1,5 @@
 import { InlineKeyboard } from 'grammy';
-import { appLink, isUnreachable, telegramBot } from '../../telegram/client';
+import { appLink, hasBlockedBot, isUnreachable, telegramBot } from '../../telegram/client';
 import { pauseUser } from '../../telegram/linking';
 import type { Notification, NotificationChannel } from '../types';
 
@@ -30,10 +30,13 @@ export const telegramChannel: NotificationChannel = {
       });
     } catch (err) {
       // A pessoa bloqueou o bot: os avisos dela se desligam, e o switch do app mostra isso.
-      if (isUnreachable(err)) {
+      if (hasBlockedBot(err)) {
         await pauseUser(recipient.id);
         return;
       }
+      // Este bot nunca falou com ela (ex.: o bot de testes, com o mesmo banco da produção):
+      // pula o aviso sem mexer nos avisos dela, que valem para o outro bot.
+      if (isUnreachable(err)) return;
       throw err;
     }
   },

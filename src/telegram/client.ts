@@ -13,9 +13,18 @@ export function isTelegramAvailable(): boolean {
   return telegramBot !== null && botUsername !== null;
 }
 
-// A pessoa bloqueou o bot (ou apagou a conta): o Telegram não deixa mais falar com ela.
+// O Telegram recusou falar com a pessoa (403). Os motivos:
+// - ela bloqueou o bot, ou apagou a conta;
+// - ela nunca tocou em "Iniciar" NESTE bot ("bot can't initiate conversation"). Acontece
+//   quando um bot diferente usa o mesmo banco: o bot de testes da sua máquina tentando
+//   falar com quem só conectou o bot de produção.
 export function isUnreachable(err: unknown): boolean {
   return err instanceof GrammyError && err.error_code === 403;
+}
+
+// Só bloqueio ou conta apagada: aí, sim, é a pessoa que não recebe mais.
+export function hasBlockedBot(err: unknown): boolean {
+  return isUnreachable(err) && /blocked|deactivated/i.test((err as GrammyError).description);
 }
 
 // Endereço público do app, para os botões "Ver no WatchMate". Sem um endereço público,
