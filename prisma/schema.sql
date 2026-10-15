@@ -21,6 +21,9 @@ CREATE TABLE "usuarios" (
     "avatar_estilo" TEXT,
     "avatar_semente" TEXT,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "telegram_chat_id" TEXT,
+    "telegram_username" TEXT,
+    "avisos_telegram" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "usuarios_pkey" PRIMARY KEY ("id")
 );
@@ -41,6 +44,8 @@ CREATE TABLE "membros_do_grupo" (
     "grupo_id" UUID NOT NULL,
     "usuario_id" UUID NOT NULL,
     "entrou_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "recado" TEXT,
+    "recado_em" TIMESTAMP(3),
 
     CONSTRAINT "membros_do_grupo_pkey" PRIMARY KEY ("id")
 );
@@ -63,6 +68,9 @@ CREATE TABLE "series_acompanhadas" (
     "idioma_original" TEXT,
     "nome_original" TEXT,
     "english_name" TEXT,
+    "ultimo_episodio_exibido" JSONB,
+    "proximo_episodio" JSONB,
+    "atualizado_tmdb_em" TIMESTAMP(3),
     "adicionado_por" UUID,
     "adicionado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -110,8 +118,30 @@ CREATE TABLE "comentarios_episodio" (
     CONSTRAINT "comentarios_episodio_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "interesses_serie" (
+    "id" UUID NOT NULL,
+    "serie_acompanhada_id" UUID NOT NULL,
+    "usuario_id" UUID NOT NULL,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "interesses_serie_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "codigos_telegram" (
+    "codigo" TEXT NOT NULL,
+    "usuario_id" UUID NOT NULL,
+    "expira_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "codigos_telegram_pkey" PRIMARY KEY ("codigo")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "usuarios_email_key" ON "usuarios"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "usuarios_telegram_chat_id_key" ON "usuarios"("telegram_chat_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "grupos_codigo_convite_key" ON "grupos"("codigo_convite");
@@ -127,6 +157,9 @@ CREATE UNIQUE INDEX "progresso_episodios_serie_acompanhada_id_usuario_id_tempora
 
 -- CreateIndex
 CREATE UNIQUE INDEX "reacoes_episodio_serie_acompanhada_id_temporada_episodio_us_key" ON "reacoes_episodio"("serie_acompanhada_id", "temporada", "episodio", "usuario_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "interesses_serie_serie_acompanhada_id_usuario_id_key" ON "interesses_serie"("serie_acompanhada_id", "usuario_id");
 
 -- AddForeignKey
 ALTER TABLE "membros_do_grupo" ADD CONSTRAINT "membros_do_grupo_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "grupos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -160,4 +193,13 @@ ALTER TABLE "comentarios_episodio" ADD CONSTRAINT "comentarios_episodio_serie_ac
 
 -- AddForeignKey
 ALTER TABLE "comentarios_episodio" ADD CONSTRAINT "comentarios_episodio_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "interesses_serie" ADD CONSTRAINT "interesses_serie_serie_acompanhada_id_fkey" FOREIGN KEY ("serie_acompanhada_id") REFERENCES "series_acompanhadas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "interesses_serie" ADD CONSTRAINT "interesses_serie_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "codigos_telegram" ADD CONSTRAINT "codigos_telegram_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

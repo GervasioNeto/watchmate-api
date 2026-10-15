@@ -1,8 +1,10 @@
 import 'dotenv/config';
 import app from './app';
+import { startTelegramBot } from './telegram/bot';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
 app.listen(PORT, () => {
   console.log(`WatchMate API rodando em http://localhost:${PORT}`);
+  void startTelegramBot();
 });
