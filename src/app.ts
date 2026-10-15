@@ -3,6 +3,7 @@ import express, { NextFunction, Request, Response } from 'express';
 import prisma from './lib/prisma';
 import groupsRouter from './routes/groups';
 import meRouter from './routes/me';
+import pushRouter from './routes/push';
 import seriesRouter from './routes/series';
 import telegramRouter from './routes/telegram';
 
@@ -36,6 +37,7 @@ app.use(meRouter);
 app.use(groupsRouter);
 app.use(seriesRouter);
 app.use(telegramRouter);
+app.use(pushRouter);
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
