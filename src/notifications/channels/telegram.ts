@@ -1,7 +1,7 @@
 import { InlineKeyboard } from 'grammy';
 import { appLink, hasBlockedBot, isUnreachable, telegramBot } from '../../telegram/client';
 import { pauseUser } from '../../telegram/linking';
-import type { Notification, NotificationChannel } from '../types';
+import type { Notification, NotificationChannel, NotificationEventType } from '../types';
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -21,6 +21,9 @@ function toKeyboard({ link }: Notification): InlineKeyboard | undefined {
 }
 
 export const telegramChannel: NotificationChannel = {
+  // Só o andamento da lista. Recados, comentários e reações ficam para o push do app: são
+  // conversa entre vocês dois, e no Telegram virariam um bot falando demais.
+  events: new Set<NotificationEventType>(['series-added', 'episode-watched', 'season-finished']),
   async send(recipient, notification) {
     if (!telegramBot || !recipient.avisosTelegram || !recipient.telegramChatId) return;
     try {

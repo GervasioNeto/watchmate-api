@@ -5,13 +5,43 @@ export type NotificationEvent =
   // Viu um episódio sozinho (vendo juntos, o par estava lá e não precisa de aviso).
   | { type: 'episode-watched'; actorId: string; seriesId: string; season: number; episode: number }
   // Marcou a temporada inteira como vista, sozinho.
-  | { type: 'season-finished'; actorId: string; seriesId: string; season: number };
+  | { type: 'season-finished'; actorId: string; seriesId: string; season: number }
+  // Deixou (ou trocou) o recado para o par: o balão ao lado dos avatares.
+  | { type: 'note-left'; actorId: string; note: string }
+  // Comentou ou reagiu a um episódio. O texto e o emoji só aparecem no aviso de quem já viu
+  // o episódio: para quem não viu, seria spoiler (a mesma regra do app).
+  | {
+      type: 'episode-commented';
+      actorId: string;
+      seriesId: string;
+      season: number;
+      episode: number;
+      comment: string;
+    }
+  | {
+      type: 'episode-reacted';
+      actorId: string;
+      seriesId: string;
+      season: number;
+      episode: number;
+      emoji: string;
+    };
 
-// Um aviso pronto, sem cara de canal nenhum: cada canal decide como mostrar (o Telegram
-// põe negrito e um botão; um push, no futuro, só o texto).
+export type NotificationEventType = NotificationEvent['type'];
+
+// Um aviso pronto, sem cara de canal nenhum: cada canal usa a forma que combina com ele.
 export interface Notification {
-  // Pedaços da frase; `strong` é o que aparece em destaque (nomes de pessoa e de série).
+  // A frase inteira, em pedaços; `strong` é o destaque (nomes de pessoa e de série). É a
+  // forma do Telegram, que mostra uma mensagem só, com negrito.
   parts: Array<{ text: string; strong?: boolean }>;
+  // A mesma coisa em duas linhas, para quem tem título e corpo (o push).
+  title: string;
+  body: string;
+  // Avisos do mesmo assunto se substituem em vez de empilhar: dez episódios seguidos da
+  // mesma série viram um aviso só, sempre com o último.
+  thread: string;
+  // Uma imagem larga da série (o fundo do TMDB), para quem mostra imagem (o push no Android).
+  imageUrl: string | null;
   // A tela do app que o aviso abre.
   link: { label: string; path: string };
 }
@@ -24,6 +54,8 @@ export interface Recipient {
 }
 
 export interface NotificationChannel {
+  // Os eventos que o canal manda (ver cada canal).
+  events: ReadonlySet<NotificationEventType>;
   // Entrega se a pessoa tem esse canal ligado; senão, não faz nada.
   send(recipient: Recipient, notification: Notification): Promise<void>;
 }

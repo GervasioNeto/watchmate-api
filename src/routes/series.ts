@@ -538,6 +538,14 @@ router.put(
     });
 
     res.json(reaction);
+    void notify({
+      type: 'episode-reacted',
+      actorId: userId,
+      seriesId,
+      season: seasonNumber,
+      episode: episodeNumber,
+      emoji: reaction.emoji,
+    });
   }),
 );
 
@@ -661,6 +669,14 @@ router.post(
     });
 
     res.status(201).json(comment);
+    void notify({
+      type: 'episode-commented',
+      actorId: userId,
+      seriesId,
+      season: seasonNumber,
+      episode: episodeNumber,
+      comment: comment.texto,
+    });
   }),
 );
 
