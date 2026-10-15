@@ -21,6 +21,9 @@ CREATE TABLE "usuarios" (
     "avatar_estilo" TEXT,
     "avatar_semente" TEXT,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "telegram_chat_id" TEXT,
+    "telegram_username" TEXT,
+    "avisos_telegram" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "usuarios_pkey" PRIMARY KEY ("id")
 );
@@ -125,8 +128,20 @@ CREATE TABLE "interesses_serie" (
     CONSTRAINT "interesses_serie_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "codigos_telegram" (
+    "codigo" TEXT NOT NULL,
+    "usuario_id" UUID NOT NULL,
+    "expira_em" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "codigos_telegram_pkey" PRIMARY KEY ("codigo")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "usuarios_email_key" ON "usuarios"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "usuarios_telegram_chat_id_key" ON "usuarios"("telegram_chat_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "grupos_codigo_convite_key" ON "grupos"("codigo_convite");
@@ -184,4 +199,7 @@ ALTER TABLE "interesses_serie" ADD CONSTRAINT "interesses_serie_serie_acompanhad
 
 -- AddForeignKey
 ALTER TABLE "interesses_serie" ADD CONSTRAINT "interesses_serie_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "codigos_telegram" ADD CONSTRAINT "codigos_telegram_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
