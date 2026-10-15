@@ -33,6 +33,7 @@ model Usuario {
   comentariosEpisodio ComentarioEpisodio[]
   interessesSerie     InteresseSerie[]
   codigosTelegram     CodigoTelegram[]
+  inscricoesPush      InscricaoPush[]
 
   @@map("usuarios")
 }
@@ -206,4 +207,26 @@ model CodigoTelegram {
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@map("codigos_telegram")
+}
+
+// Um aparelho que aceitou receber avisos por push (ver src/push). A mesma pessoa pode ter
+// vários (o celular e o computador), e cada um liga e desliga o seu. O endpoint é o endereço
+// do aparelho no serviço de push do navegador: único, e é por ele que a inscrição se atualiza.
+model InscricaoPush {
+  id         String   @id @default(uuid()) @db.Uuid
+  usuarioId  String   @map("usuario_id") @db.Uuid
+  endpoint   String   @unique
+  // As chaves do aparelho para criptografar o aviso: só ele consegue ler o conteúdo.
+  p256dh     String
+  auth       String
+  // A chave pública VAPID do ambiente em que o aparelho se inscreveu. O banco é o mesmo para
+  // a sua máquina, a develop e a main, e cada ambiente tem as suas chaves: cada um só manda
+  // para as inscrições feitas com a própria chave.
+  chaveVapid String   @map("chave_vapid")
+  criadoEm   DateTime @default(now()) @map("criado_em")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("inscricoes_push")
 }

@@ -138,6 +138,19 @@ CREATE TABLE "codigos_telegram" (
     CONSTRAINT "codigos_telegram_pkey" PRIMARY KEY ("codigo")
 );
 
+-- CreateTable
+CREATE TABLE "inscricoes_push" (
+    "id" UUID NOT NULL,
+    "usuario_id" UUID NOT NULL,
+    "endpoint" TEXT NOT NULL,
+    "p256dh" TEXT NOT NULL,
+    "auth" TEXT NOT NULL,
+    "chave_vapid" TEXT NOT NULL,
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "inscricoes_push_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "usuarios_email_key" ON "usuarios"("email");
 
@@ -164,6 +177,12 @@ CREATE UNIQUE INDEX "reacoes_episodio_serie_acompanhada_id_temporada_episodio_us
 
 -- CreateIndex
 CREATE UNIQUE INDEX "interesses_serie_serie_acompanhada_id_usuario_id_key" ON "interesses_serie"("serie_acompanhada_id", "usuario_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "inscricoes_push_endpoint_key" ON "inscricoes_push"("endpoint");
+
+-- CreateIndex
+CREATE INDEX "inscricoes_push_usuario_id_idx" ON "inscricoes_push"("usuario_id");
 
 -- AddForeignKey
 ALTER TABLE "membros_do_grupo" ADD CONSTRAINT "membros_do_grupo_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "grupos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -206,4 +225,7 @@ ALTER TABLE "interesses_serie" ADD CONSTRAINT "interesses_serie_usuario_id_fkey"
 
 -- AddForeignKey
 ALTER TABLE "codigos_telegram" ADD CONSTRAINT "codigos_telegram_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "inscricoes_push" ADD CONSTRAINT "inscricoes_push_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

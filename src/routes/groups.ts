@@ -5,6 +5,7 @@ import { generateInviteCode } from '../lib/inviteCode';
 import { isPersonColor, pickFreeColor } from '../lib/personColors';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
+import { notify } from '../notifications/notify';
 
 const router = Router();
 
@@ -255,6 +256,7 @@ router.put(
     }
 
     res.json(membership);
+    void notify({ type: 'note-left', actorId: req.user!.id, note: recado });
   }),
 );
 
