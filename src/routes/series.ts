@@ -13,6 +13,8 @@ import {
   resolveTargetUserIds,
   setEpisodesWatched,
 } from '../lib/progress';
+import { loadInterestedIds, loadSeriesList, toSeriesResponse } from '../lib/seriesList';
+import { snapshotFields } from '../lib/seriesSnapshot';
 import {
   fetchSeasonFromTmdb,
   fetchSeriesFromTmdb,
@@ -77,15 +79,11 @@ router.post(
     try {
       const series = await prisma.serieAcompanhada.create({
         data: {
+          ...snapshotFields(details),
           grupoId: groupId,
           tmdbId: details.tmdbId,
           nome: details.name,
-          posterPath: details.posterPath,
-          temporadas: details.seasons as unknown as Prisma.InputJsonValue,
           sinopse: details.sinopse,
-          notaMedia: details.notaMedia,
-          status: details.status,
-          backdropPath: details.backdropPath,
           generos: details.generos,
           primeiraExibicaoEm: details.primeiraExibicaoEm,
           idiomaOriginal: details.idiomaOriginal,
@@ -95,7 +93,8 @@ router.post(
           modo,
         },
       });
-      res.status(201).json(series);
+      // Série nova: ninguém marcou "quero ver" nem reagiu ainda.
+      res.status(201).json(toSeriesResponse(series, [], null));
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         res.status(409).json({ error: 'Essa série já está sendo acompanhada pelo grupo' });
@@ -118,14 +117,43 @@ router.get(
       return;
     }
 
-    const series = await prisma.serieAcompanhada.findMany({
-      where: { grupoId: groupId },
-      orderBy: { adicionadoEm: 'desc' },
-    });
-
-    res.json(series);
+    res.json(await loadSeriesList(groupId, userId));
   }),
 );
+
+// "Quero ver": PUT marca e DELETE desmarca a série para quem chamou. As duas são
+// idempotentes e devolvem quem quer ver agora, para o app acertar o que mostrou antes
+// da resposta (inclusive o que o par marcou nesse meio-tempo).
+function setInterest(wants: boolean) {
+  return asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId } = req.params;
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({ where: { id: seriesId } });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const where = { serieAcompanhadaId: seriesId, usuarioId: userId };
+    if (wants) {
+      await prisma.interesseSerie.createMany({ data: [where], skipDuplicates: true });
+    } else {
+      await prisma.interesseSerie.deleteMany({ where });
+    }
+
+    res.json({ interessados: await loadInterestedIds(seriesId, groupId) });
+  });
+}
+
+router.put('/series/:seriesId/interest', authenticate, setInterest(true));
+router.delete('/series/:seriesId/interest', authenticate, setInterest(false));
 
 router.delete(
   '/series/:id',

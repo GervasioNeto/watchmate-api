@@ -7,20 +7,42 @@ export interface TmdbSeasonSummary {
   totalEpisodios: number;
 }
 
-export interface TmdbSeriesDetails {
-  tmdbId: number;
-  name: string;
+// Um episódio de referência: o último que foi ao ar ou o próximo agendado. A data fica
+// como o TMDB manda, só o dia ('2026-10-16'): virar Date a deixaria à meia-noite UTC,
+// que no Brasil ainda é o dia anterior.
+export interface TmdbEpisodeRef {
+  temporada: number;
+  episodio: number;
+  dataExibicao: string | null;
+}
+
+// O que muda enquanto a série está no ar: é o que a lista renova de tempos em tempos
+// (ver lib/seriesSnapshot.ts).
+export interface TmdbSeriesSnapshot {
   posterPath: string | null;
+  backdropPath: string | null;
   seasons: TmdbSeasonSummary[];
-  sinopse: string | null;
   notaMedia: number | null;
   status: string | null;
-  backdropPath: string | null;
+  ultimoEpisodioExibido: TmdbEpisodeRef | null;
+  proximoEpisodio: TmdbEpisodeRef | null;
+}
+
+export interface TmdbSeriesDetails extends TmdbSeriesSnapshot {
+  tmdbId: number;
+  name: string;
+  sinopse: string | null;
   generos: string[];
   primeiraExibicaoEm: Date | null;
   idiomaOriginal: string | null;
   nomeOriginal: string | null;
   englishName: string | null;
+}
+
+interface TmdbEpisodeToAir {
+  season_number: number;
+  episode_number: number;
+  air_date: string | null;
 }
 
 interface TmdbTvResponse {
@@ -35,6 +57,8 @@ interface TmdbTvResponse {
   first_air_date: string | null;
   original_language: string | null;
   original_name: string | null;
+  last_episode_to_air: TmdbEpisodeToAir | null;
+  next_episode_to_air: TmdbEpisodeToAir | null;
 }
 
 export interface TmdbSeriesSummary {
@@ -54,7 +78,7 @@ interface TmdbSearchResponse {
   }>;
 }
 
-export async function fetchSeriesFromTmdb(tmdbId: number): Promise<TmdbSeriesDetails> {
+function tvUrl(tmdbId: number, language: string): URL {
   const apiKey = process.env.TMDB_API_KEY;
   if (!apiKey) {
     throw new Error('TMDB_API_KEY não configurada');
@@ -62,14 +86,11 @@ export async function fetchSeriesFromTmdb(tmdbId: number): Promise<TmdbSeriesDet
 
   const url = new URL(`${TMDB_BASE_URL}/tv/${tmdbId}`);
   url.searchParams.set('api_key', apiKey);
-  url.searchParams.set('language', 'pt-BR');
+  url.searchParams.set('language', language);
+  return url;
+}
 
-  const englishUrl = new URL(`${TMDB_BASE_URL}/tv/${tmdbId}`);
-  englishUrl.searchParams.set('api_key', apiKey);
-  englishUrl.searchParams.set('language', 'en-US');
-
-  const [response, englishResponse] = await Promise.all([fetch(url), fetch(englishUrl)]);
-
+async function readTvResponse(tmdbId: number, response: Response): Promise<TmdbTvResponse> {
   if (response.status === 404) {
     throw new SeriesNotFoundError(`Série TMDB ${tmdbId} não encontrada`);
   }
@@ -78,30 +99,64 @@ export async function fetchSeriesFromTmdb(tmdbId: number): Promise<TmdbSeriesDet
     throw new Error(`Erro ao consultar TMDB: ${response.status}`);
   }
 
-  const data = (await response.json()) as TmdbTvResponse;
+  return (await response.json()) as TmdbTvResponse;
+}
+
+// Especiais (temporada 0) ficam de fora, como em `seasons`.
+function toEpisodeRef(episode: TmdbEpisodeToAir | null): TmdbEpisodeRef | null {
+  if (!episode || episode.season_number === 0) return null;
+  return {
+    temporada: episode.season_number,
+    episodio: episode.episode_number,
+    dataExibicao: episode.air_date || null,
+  };
+}
+
+function toSnapshot(data: TmdbTvResponse): TmdbSeriesSnapshot {
+  return {
+    posterPath: data.poster_path,
+    backdropPath: data.backdrop_path,
+    seasons: data.seasons
+      .filter((season) => season.season_number > 0)
+      .map((season) => ({ numero: season.season_number, totalEpisodios: season.episode_count })),
+    notaMedia: data.vote_average ?? null,
+    status: data.status,
+    ultimoEpisodioExibido: toEpisodeRef(data.last_episode_to_air),
+    proximoEpisodio: toEpisodeRef(data.next_episode_to_air),
+  };
+}
+
+export async function fetchSeriesFromTmdb(tmdbId: number): Promise<TmdbSeriesDetails> {
+  const [response, englishResponse] = await Promise.all([
+    fetch(tvUrl(tmdbId, 'pt-BR')),
+    fetch(tvUrl(tmdbId, 'en-US')),
+  ]);
+
+  const data = await readTvResponse(tmdbId, response);
   const englishName = englishResponse.ok
     ? ((await englishResponse.json()) as { name: string }).name
     : null;
 
-  const seasons = data.seasons
-    .filter((season) => season.season_number > 0)
-    .map((season) => ({ numero: season.season_number, totalEpisodios: season.episode_count }));
-
   return {
+    ...toSnapshot(data),
     tmdbId,
     name: data.name,
-    posterPath: data.poster_path,
-    seasons,
     sinopse: data.overview || null,
-    notaMedia: data.vote_average ?? null,
-    status: data.status,
-    backdropPath: data.backdrop_path,
     generos: data.genres.map((genre) => genre.name),
     primeiraExibicaoEm: data.first_air_date ? new Date(data.first_air_date) : null,
     idiomaOriginal: data.original_language,
     nomeOriginal: data.original_name,
     englishName,
   };
+}
+
+// Só o que muda com o tempo, numa consulta só (o nome em inglês não muda).
+export async function fetchSeriesSnapshot(
+  tmdbId: number,
+  signal?: AbortSignal,
+): Promise<TmdbSeriesSnapshot> {
+  const response = await fetch(tvUrl(tmdbId, 'pt-BR'), { signal });
+  return toSnapshot(await readTvResponse(tmdbId, response));
 }
 
 export interface TmdbEpisodeDetails {
