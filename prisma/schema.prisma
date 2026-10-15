@@ -24,6 +24,7 @@ model Usuario {
   seriesAdicionadas   SerieAcompanhada[]   @relation("SerieAdicionadaPor")
   reacoesEpisodio     ReacaoEpisodio[]
   comentariosEpisodio ComentarioEpisodio[]
+  interessesSerie     InteresseSerie[]
 
   @@map("usuarios")
 }
@@ -73,8 +74,9 @@ model SerieAcompanhada {
   tmdbId             Int       @map("tmdb_id")
   nome               String
   posterPath         String?   @map("poster_path")
-  // Snapshot do TMDB no momento em que a série foi adicionada: [{ numero: number, totalEpisodios: number }].
-  // Não é atualizado depois — se a série ganhar temporadas novas, é preciso reimportar.
+  // Snapshot do TMDB: [{ numero: number, totalEpisodios: number }]. A lista renova o
+  // snapshot das séries no ar (ver lib/seriesSnapshot.ts), então temporadas e episódios
+  // novos aparecem sozinhos.
   temporadas         Json
   sinopse            String?   @map("sinopse")
   notaMedia          Float?    @map("nota_media")
@@ -85,6 +87,13 @@ model SerieAcompanhada {
   idiomaOriginal     String?   @map("idioma_original")
   nomeOriginal       String?   @map("nome_original")
   englishName        String?   @map("english_name")
+  // Último episódio que foi ao ar e o próximo agendado, do snapshot do TMDB:
+  // { temporada: number, episodio: number, dataExibicao: string | null }, com a data só
+  // do dia ('2026-10-16'). Null quando o TMDB não informa (série que acabou não tem próximo).
+  ultimoEpisodioExibido Json?  @map("ultimo_episodio_exibido")
+  proximoEpisodio    Json?     @map("proximo_episodio")
+  // Quando o snapshot foi renovado pela última vez; null nas séries adicionadas antes disso.
+  atualizadoTmdbEm   DateTime? @map("atualizado_tmdb_em")
   adicionadoPor      String?   @map("adicionado_por") @db.Uuid
   adicionadoEm       DateTime  @default(now()) @map("adicionado_em")
 
@@ -93,6 +102,7 @@ model SerieAcompanhada {
   progressoEpisodios   ProgressoEpisodio[]
   reacoesEpisodio      ReacaoEpisodio[]
   comentariosEpisodio  ComentarioEpisodio[]
+  interesses           InteresseSerie[]
 
   @@unique([grupoId, tmdbId])
   @@map("series_acompanhadas")
@@ -153,4 +163,20 @@ model ComentarioEpisodio {
   usuario          Usuario          @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@map("comentarios_episodio")
+}
+
+// "Quero ver": cada membro marca as séries da fila que quer começar. Uma linha por pessoa
+// por série; desmarcar apaga. A marcação continua depois que a série começa (o app só a
+// mostra enquanto ninguém começou) e volta a valer se o progresso for desfeito.
+model InteresseSerie {
+  id                 String   @id @default(uuid()) @db.Uuid
+  serieAcompanhadaId String   @map("serie_acompanhada_id") @db.Uuid
+  usuarioId          String   @map("usuario_id") @db.Uuid
+  criadoEm           DateTime @default(now()) @map("criado_em")
+
+  serieAcompanhada SerieAcompanhada @relation(fields: [serieAcompanhadaId], references: [id], onDelete: Cascade)
+  usuario          Usuario          @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([serieAcompanhadaId, usuarioId])
+  @@map("interesses_serie")
 }
