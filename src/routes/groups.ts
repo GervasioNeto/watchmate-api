@@ -9,6 +9,23 @@ const router = Router();
 
 const MAX_CODE_ATTEMPTS = 5;
 
+// Recado para o par: uma frase curta, sobrescrita a cada envio (não é um chat).
+const MAX_RECADO = 80;
+
+type RecadoData = { recado: string; recadoEm: Date } | { recado: null; recadoEm: null };
+
+// Atualiza o recado de quem chamou. Devolve null se a pessoa não está em nenhum grupo.
+async function saveOwnNote(userId: string, data: RecadoData) {
+  try {
+    return await prisma.membroDoGrupo.update({ where: { usuarioId: userId }, data });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return null;
+    }
+    throw err;
+  }
+}
+
 router.post(
   '/groups',
   authenticate,
@@ -149,6 +166,48 @@ router.patch(
     });
 
     res.json(group);
+  }),
+);
+
+router.put(
+  '/groups/me/note',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const { texto } = req.body as { texto?: unknown };
+
+    if (typeof texto !== 'string') {
+      res.status(400).json({ error: 'texto é obrigatório' });
+      return;
+    }
+
+    // O recado aparece numa linha só: quebras e espaços repetidos viram um espaço.
+    const recado = texto.replace(/\s+/g, ' ').trim();
+    if (recado.length === 0 || recado.length > MAX_RECADO) {
+      res.status(400).json({ error: `texto deve ter entre 1 e ${MAX_RECADO} caracteres` });
+      return;
+    }
+
+    const membership = await saveOwnNote(req.user!.id, { recado, recadoEm: new Date() });
+    if (!membership) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    res.json(membership);
+  }),
+);
+
+router.delete(
+  '/groups/me/note',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const membership = await saveOwnNote(req.user!.id, { recado: null, recadoEm: null });
+    if (!membership) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    res.status(204).end();
   }),
 );
 

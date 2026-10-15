@@ -43,10 +43,14 @@ model Grupo {
 // Um usuário pertence a no máximo um grupo por vez (usuarioId é @unique).
 // O limite de 2 membros por grupo é validado na aplicação, não no banco.
 model MembroDoGrupo {
-  id        String   @id @default(uuid()) @db.Uuid
-  grupoId   String   @map("grupo_id") @db.Uuid
-  usuarioId String   @unique @map("usuario_id") @db.Uuid
-  entrouEm  DateTime @default(now()) @map("entrou_em")
+  id        String    @id @default(uuid()) @db.Uuid
+  grupoId   String    @map("grupo_id") @db.Uuid
+  usuarioId String    @unique @map("usuario_id") @db.Uuid
+  entrouEm  DateTime  @default(now()) @map("entrou_em")
+  // Recado curto que o membro deixa para o par, visível para o grupo. Fica no
+  // membro (e não no usuário) porque só faz sentido dentro do grupo: sai junto.
+  recado    String?
+  recadoEm  DateTime? @map("recado_em")
 
   grupo   Grupo   @relation(fields: [grupoId], references: [id], onDelete: Cascade)
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
