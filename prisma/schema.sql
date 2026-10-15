@@ -41,6 +41,8 @@ CREATE TABLE "membros_do_grupo" (
     "grupo_id" UUID NOT NULL,
     "usuario_id" UUID NOT NULL,
     "entrou_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "recado" TEXT,
+    "recado_em" TIMESTAMP(3),
 
     CONSTRAINT "membros_do_grupo_pkey" PRIMARY KEY ("id")
 );
