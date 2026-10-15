@@ -60,10 +60,17 @@ model MembroDoGrupo {
   // membro (e não no usuário) porque só faz sentido dentro do grupo: sai junto.
   recado    String?
   recadoEm  DateTime? @map("recado_em")
+  // A cor da pessoa na dupla, um id da paleta (ver lib/personColors.ts). Fica no membro
+  // pelo mesmo motivo do recado, e o índice único garante que os dois nunca tenham a
+  // mesma cor no grupo. Quem cria o grupo e quem entra recebem uma cor livre na hora.
+  // Opcional só no banco: uma versão anterior da API, rodando contra o mesmo banco
+  // durante um deploy, cria membros sem cor (o app mostra a cor padrão para eles).
+  cor       String?
 
   grupo   Grupo   @relation(fields: [grupoId], references: [id], onDelete: Cascade)
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  @@unique([grupoId, cor])
   @@map("membros_do_grupo")
 }
 
