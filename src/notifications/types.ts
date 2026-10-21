@@ -25,7 +25,11 @@ export type NotificationEvent =
       season: number;
       episode: number;
       emoji: string;
-    };
+    }
+  // O "Bora?" (ver src/invites): chamou o par, respondeu o convite ou desfez.
+  | { type: 'invite-sent'; actorId: string; inviteId: string }
+  | { type: 'invite-answered'; actorId: string; inviteId: string }
+  | { type: 'invite-canceled'; actorId: string; inviteId: string };
 
 export type NotificationEventType = NotificationEvent['type'];
 
@@ -44,6 +48,14 @@ export interface Notification {
   imageUrl: string | null;
   // A tela do app que o aviso abre.
   link: { label: string; path: string };
+  // Toca de novo mesmo substituindo um aviso do mesmo assunto (um convite novo chama a
+  // atenção; um comentário a mais na mesma conversa, não).
+  renotify?: boolean;
+  // Respostas direto no aviso, para quem mostra botões (o push no Android). Cada uma abre o
+  // app numa tela que faz a ação: sem o app, o aviso não tem como saber quem é a pessoa.
+  actions?: Array<{ id: string; label: string; path: string }>;
+  // Quantos avisos novos a pessoa tem em "Entre vocês", para o número no ícone do app.
+  badge?: number;
 }
 
 // Quem recebe, com o que os canais precisam para entregar.
