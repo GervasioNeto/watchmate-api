@@ -24,6 +24,9 @@ model Usuario {
   telegramUsername String?  @map("telegram_username")
   // Ligado pela pessoa no perfil; desligado pelo /parar ou quando ela bloqueia o bot.
   avisosTelegram   Boolean  @default(false) @map("avisos_telegram")
+  // A última vez que a pessoa abriu "Entre vocês": os avisos depois disso contam como
+  // novos (o pontinho no ícone). Um horário só, em vez de um "lido" por aviso.
+  avisosVistosEm   DateTime? @map("avisos_vistos_em")
 
   membroDoGrupo       MembroDoGrupo?
   progressoEpisodios  ProgressoEpisodio[]  @relation("ProgressoDoUsuario")
@@ -34,6 +37,10 @@ model Usuario {
   interessesSerie     InteresseSerie[]
   codigosTelegram     CodigoTelegram[]
   inscricoesPush      InscricaoPush[]
+  convitesFeitos      ConviteSessao[]      @relation("ConviteDe")
+  convitesRecebidos   ConviteSessao[]      @relation("ConvitePara")
+  avisosRecebidos     Aviso[]              @relation("AvisoPara")
+  avisosFeitos        Aviso[]              @relation("AvisoDe")
 
   @@map("usuarios")
 }
@@ -46,6 +53,7 @@ model Grupo {
 
   membros            MembroDoGrupo[]
   seriesAcompanhadas SerieAcompanhada[]
+  convites           ConviteSessao[]
 
   @@map("grupos")
 }
@@ -119,6 +127,8 @@ model SerieAcompanhada {
   reacoesEpisodio      ReacaoEpisodio[]
   comentariosEpisodio  ComentarioEpisodio[]
   interesses           InteresseSerie[]
+  convites             ConviteSessao[]
+  avisos               Aviso[]
 
   @@unique([grupoId, tmdbId])
   @@map("series_acompanhadas")
@@ -229,4 +239,88 @@ model InscricaoPush {
 
   @@index([usuarioId])
   @@map("inscricoes_push")
+}
+
+// O "Bora?": um chama o outro para ver um episódio, agora ou num horário (ver src/invites).
+// Um convite ativo por dupla: um novo substitui o anterior. Expirar não é um status
+// guardado: passou de `expiraEm` sem ter sido cumprido, a API devolve como expirado.
+enum StatusConvite {
+  PENDENTE
+  ACEITO
+  RECUSADO
+  CANCELADO
+}
+
+model ConviteSessao {
+  id                 String        @id @default(uuid()) @db.Uuid
+  grupoId            String        @map("grupo_id") @db.Uuid
+  serieAcompanhadaId String        @map("serie_acompanhada_id") @db.Uuid
+  temporada          Int
+  episodio           Int
+  deUsuarioId        String        @map("de_usuario_id") @db.Uuid
+  paraUsuarioId      String        @map("para_usuario_id") @db.Uuid
+  // Para quando é a sessão; null é "agora".
+  horario            DateTime?
+  // O fuso de quem chamou (ex.: "America/Sao_Paulo"), para os avisos dizerem "hoje às 21h"
+  // na hora de vocês, e não na do servidor.
+  fusoHorario        String        @map("fuso_horario")
+  // Uma das frases prontas do app (ver src/invites/phrases.ts), ou nenhuma.
+  frase              String?
+  status             StatusConvite @default(PENDENTE)
+  // Aceito em outro horário ("topo, mas às 22h"): `horario` já é o novo.
+  remarcado          Boolean       @default(false)
+  respondidoEm       DateTime?     @map("respondido_em")
+  expiraEm           DateTime      @map("expira_em")
+  criadoEm           DateTime      @default(now()) @map("criado_em")
+
+  grupo            Grupo            @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  serieAcompanhada SerieAcompanhada @relation(fields: [serieAcompanhadaId], references: [id], onDelete: Cascade)
+  de               Usuario          @relation("ConviteDe", fields: [deUsuarioId], references: [id], onDelete: Cascade)
+  para             Usuario          @relation("ConvitePara", fields: [paraUsuarioId], references: [id], onDelete: Cascade)
+  avisos           Aviso[]
+
+  @@index([grupoId, criadoEm])
+  @@map("convites_sessao")
+}
+
+// "Entre vocês": tudo o que o par fez para você, guardado (ver src/inbox). O push é só uma
+// cópia que tenta chegar no celular; apagou o push, o aviso continua aqui. Fica 30 dias.
+enum TipoAviso {
+  CONVITE
+  RESPOSTA_CONVITE
+  RECADO
+  COMENTARIO
+  REACAO
+  SERIE_ADICIONADA
+  EPISODIO_VISTO
+  TEMPORADA_TERMINADA
+}
+
+model Aviso {
+  id                 String    @id @default(uuid()) @db.Uuid
+  // Para quem é o aviso, e quem fez.
+  usuarioId          String    @map("usuario_id") @db.Uuid
+  autorId            String    @map("autor_id") @db.Uuid
+  tipo               TipoAviso
+  // Avisos do mesmo assunto em pouco tempo viram um só, que sobe com o mais recente
+  // ("Leila comentou 3 vezes no T2 · E5"). `quantidade` conta quantos se juntaram.
+  assunto            String
+  quantidade         Int       @default(1)
+  serieAcompanhadaId String?   @map("serie_acompanhada_id") @db.Uuid
+  temporada          Int?
+  episodio           Int?
+  conviteId          String?   @map("convite_id") @db.Uuid
+  // Só o recado guarda o texto (é o recado daquela hora). Comentário e reação são lidos na
+  // hora de mostrar: um comentário apagado some daqui, e o spoiler segue o que você já viu.
+  texto              String?
+  criadoEm           DateTime  @default(now()) @map("criado_em")
+  atualizadoEm       DateTime  @default(now()) @map("atualizado_em")
+
+  usuario          Usuario           @relation("AvisoPara", fields: [usuarioId], references: [id], onDelete: Cascade)
+  autor            Usuario           @relation("AvisoDe", fields: [autorId], references: [id], onDelete: Cascade)
+  serieAcompanhada SerieAcompanhada? @relation(fields: [serieAcompanhadaId], references: [id], onDelete: Cascade)
+  convite          ConviteSessao?    @relation(fields: [conviteId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, atualizadoEm])
+  @@map("avisos")
 }

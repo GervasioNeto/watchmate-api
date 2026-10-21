@@ -17,6 +17,12 @@ export interface PushMessage {
   // Avisos com a mesma tag se substituem no celular em vez de empilhar.
   tag: string;
   image: string | null;
+  // Substituir um aviso da mesma tag toca de novo (sem isso, troca em silêncio).
+  renotify: boolean;
+  // Botões no aviso (o Android mostra até dois; o iPhone, nenhum). Cada um abre `path`.
+  actions: Array<{ action: string; title: string; path: string }>;
+  // Avisos novos em "Entre vocês", para o número no ícone do app instalado. Null: não muda.
+  badge: number | null;
 }
 
 // Só os serviços de push dos navegadores: a API manda requisições para o endpoint guardado,

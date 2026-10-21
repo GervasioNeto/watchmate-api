@@ -78,16 +78,29 @@ interface TmdbSearchResponse {
   }>;
 }
 
-function tvUrl(tmdbId: number, language: string): URL {
+// Uma rota do TMDB com a chave, o idioma e os parâmetros dela.
+export function tmdbUrl(path: string, language: string, params: Record<string, string> = {}): URL {
   const apiKey = process.env.TMDB_API_KEY;
   if (!apiKey) {
     throw new Error('TMDB_API_KEY não configurada');
   }
 
-  const url = new URL(`${TMDB_BASE_URL}/tv/${tmdbId}`);
+  const url = new URL(`${TMDB_BASE_URL}${path}`);
   url.searchParams.set('api_key', apiKey);
   url.searchParams.set('language', language);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   return url;
+}
+
+function tvUrl(tmdbId: number, language: string): URL {
+  return tmdbUrl(`/tv/${tmdbId}`, language);
+}
+
+// O nome que dá para ler: o em português quando o TMDB tem; quando ele só tem o original em
+// outro alfabeto (tailandês, coreano, japonês), o em inglês.
+export function readableName(name: string, englishName: string | null): string {
+  if (!englishName || /\p{Script=Latin}/u.test(name)) return name;
+  return englishName;
 }
 
 async function readTvResponse(tmdbId: number, response: Response): Promise<TmdbTvResponse> {
