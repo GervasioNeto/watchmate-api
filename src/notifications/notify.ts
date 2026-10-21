@@ -1,3 +1,5 @@
+import { countUnseen } from '../inbox/read';
+import { recordInboxItem } from '../inbox/record';
 import prisma from '../lib/prisma';
 import { pushChannel } from './channels/push';
 import { telegramChannel } from './channels/telegram';
@@ -12,9 +14,11 @@ const notifySelf = process.env.NOTIFY_SELF === 'true';
 
 // Avisa o par sobre o que alguém fez. As rotas chamam depois de responder (`void
 // notify(...)`): o aviso nunca atrasa nem derruba a ação, e um erro aqui só vai para o log.
+//
+// Primeiro o aviso é guardado em "Entre vocês" (ver src/inbox); os canais (push, Telegram)
+// são só cópias que tentam chegar. Apagou o push ou desligou os avisos: o aviso continua lá.
 export async function notify(event: NotificationEvent): Promise<void> {
   const eventChannels = channels.filter((channel) => channel.events.has(event.type));
-  if (eventChannels.length === 0) return;
 
   try {
     const membership = await prisma.membroDoGrupo.findUnique({
@@ -50,10 +54,19 @@ export async function notify(event: NotificationEvent): Promise<void> {
     // para uma falha nunca ficar sem tratamento enquanto o aviso do outro é montado.
     const perRecipient = await Promise.all(
       recipients.map(async (recipient) => {
+        try {
+          await recordInboxItem(event, recipient.id);
+        } catch (err) {
+          // Sem o aviso guardado, o push ainda vale a tentativa.
+          console.error(`Aviso "${event.type}" não guardado em Entre vocês`, err);
+        }
+        if (eventChannels.length === 0) return [];
+
         const notification = await describeEvent(event, firstName(actor), recipient.id);
         if (!notification) return [];
+        const badge = await countUnseen(recipient.id).catch(() => undefined);
         return Promise.allSettled(
-          eventChannels.map((channel) => channel.send(recipient, notification)),
+          eventChannels.map((channel) => channel.send(recipient, { ...notification, badge })),
         );
       }),
     );
