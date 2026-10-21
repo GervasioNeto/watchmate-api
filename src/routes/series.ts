@@ -725,6 +725,46 @@ router.get(
   }),
 );
 
+// Quantos comentários cada episódio da temporada tem, para a lista mostrar a conversa sem
+// abrir episódio por episódio. Contar não é spoiler: o texto continua escondido para quem
+// ainda não viu (ver a rota de comentários acima).
+router.get(
+  '/series/:seriesId/seasons/:season/comment-counts',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { seriesId, season } = req.params;
+
+    const seasonNumber = Number(season);
+    if (!Number.isInteger(seasonNumber)) {
+      res.status(400).json({ error: 'season deve ser um número inteiro' });
+      return;
+    }
+
+    const groupId = await getUserGroupId(userId);
+    if (!groupId) {
+      res.status(404).json({ error: 'Você não faz parte de nenhum grupo' });
+      return;
+    }
+
+    const series = await prisma.serieAcompanhada.findUnique({
+      where: { id: seriesId },
+      select: { grupoId: true },
+    });
+    if (!series || series.grupoId !== groupId) {
+      res.status(404).json({ error: 'Série não encontrada' });
+      return;
+    }
+
+    const counts = await prisma.comentarioEpisodio.groupBy({
+      by: ['episodio'],
+      where: { serieAcompanhadaId: seriesId, temporada: seasonNumber },
+      _count: { _all: true },
+    });
+    res.json(counts.map((row) => ({ episodio: row.episodio, total: row._count._all })));
+  }),
+);
+
 router.delete(
   '/series/:seriesId/seasons/:season/episodes/:episode/comments/:commentId',
   authenticate,
