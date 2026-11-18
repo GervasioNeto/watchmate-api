@@ -2,8 +2,8 @@ import { sendToUser } from '../../push/subscriptions';
 import type { NotificationChannel, NotificationEventType } from '../types';
 
 // O push é do próprio app, então leva tudo: o que o Telegram leva e também recados,
-// comentários, reações e os convites do "Bora?". Chega em cada aparelho em que a pessoa
-// ligou os avisos.
+// comentários, reações, os convites do "Bora?" e os presentes. Chega em cada aparelho em que
+// a pessoa ligou os avisos.
 export const pushChannel: NotificationChannel = {
   events: new Set<NotificationEventType>([
     'series-added',
@@ -15,6 +15,11 @@ export const pushChannel: NotificationChannel = {
     'invite-sent',
     'invite-answered',
     'invite-canceled',
+    'gift-sent',
+    'gift-delivered',
+    'gift-opened',
+    'gift-reacted',
+    'voucher-used',
   ]),
   async send(recipient, notification) {
     await sendToUser(recipient.id, {

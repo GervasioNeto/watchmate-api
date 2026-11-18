@@ -29,7 +29,15 @@ export type NotificationEvent =
   // O "Bora?" (ver src/invites): chamou o par, respondeu o convite ou desfez.
   | { type: 'invite-sent'; actorId: string; inviteId: string }
   | { type: 'invite-answered'; actorId: string; inviteId: string }
-  | { type: 'invite-canceled'; actorId: string; inviteId: string };
+  | { type: 'invite-canceled'; actorId: string; inviteId: string }
+  // Os presentes (ver src/gifts): deu um presente trancado até uma hora (`timeZone` é o fuso de
+  // quem deu, para o aviso dizer "abre amanhã à meia-noite"), chegou a hora de abrir (o autor é
+  // quem deu), quem recebeu abriu ou reagiu, ou usou um vale.
+  | { type: 'gift-sent'; actorId: string; giftId: string; timeZone: string }
+  | { type: 'gift-delivered'; actorId: string; giftId: string }
+  | { type: 'gift-opened'; actorId: string; giftId: string }
+  | { type: 'gift-reacted'; actorId: string; giftId: string }
+  | { type: 'voucher-used'; actorId: string; giftId: string; voucherId: string };
 
 export type NotificationEventType = NotificationEvent['type'];
 
