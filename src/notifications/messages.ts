@@ -1,3 +1,5 @@
+import { isGiftOccasion, OCCASION_HEADLINES } from '../gifts/catalog';
+import { describeOpening, giftInclude } from '../gifts/gifts';
 import { inviteInclude } from '../invites/invites';
 import { describeInviteTime } from '../invites/schedule';
 import { getWatchedEpisodeKeys, isSpoilerFor } from '../lib/progress';
@@ -152,6 +154,108 @@ async function describeInvite(
   };
 }
 
+type GiftEvent = Extract<
+  NotificationEvent,
+  { type: 'gift-sent' | 'gift-delivered' | 'gift-opened' | 'gift-reacted' | 'voucher-used' }
+>;
+
+// Um presente agendado (trancado até a hora) e não um entregue na hora de criar.
+const SCHEDULED_AFTER_MS = 60 * 1000;
+
+// Os avisos dos presentes. Os de quem recebe nunca contam o que tem dentro (é surpresa): só que
+// tem presente, quando ele abre e quando destrancou. Os outros vão para quem deu: abriu,
+// reagiu, usou um vale.
+async function describeGift(event: GiftEvent, actorName: string): Promise<Notification | null> {
+  const gift = await prisma.presente.findUnique({
+    where: { id: event.giftId },
+    include: giftInclude,
+  });
+  if (!gift) return null;
+
+  const actor = { text: actorName, strong: true };
+  const headline = OCCASION_HEADLINES[isGiftOccasion(gift.ocasiao) ? gift.ocasiao : 'just-because'];
+  const giftPath = `/couple?gift=${gift.id}`;
+
+  switch (event.type) {
+    case 'gift-sent':
+      return {
+        parts: [
+          { text: '🎁 ' },
+          actor,
+          { text: ' deixou um presente pra você. Abre ' },
+          { text: describeOpening(gift.entregarEm, event.timeZone, new Date()) },
+        ],
+        title: `🎁 ${actorName} deixou um presente pra você`,
+        body: `Abre ${describeOpening(gift.entregarEm, event.timeZone, new Date())}. Até lá, fica fechadinho 🔒`,
+        thread: 'gift',
+        imageUrl: null,
+        link: { label: 'Ver o presente', path: `/couple?gift=${gift.id}` },
+        renotify: true,
+      };
+    case 'gift-delivered':
+      // Agendado: o par já sabia do presente, o aviso é que destrancou.
+      if (gift.entregarEm.getTime() - gift.criadoEm.getTime() > SCHEDULED_AFTER_MS) {
+        return {
+          parts: [
+            { text: '🎁 Chegou a hora! O presente de ' },
+            actor,
+            { text: ' já pode ser aberto.' },
+          ],
+          title: '🎁 Chegou a hora!',
+          body: `O presente de ${actorName} já pode ser aberto 💝`,
+          thread: 'gift',
+          imageUrl: null,
+          link: { label: 'Abrir o presente', path: '/my-list' },
+          renotify: true,
+        };
+      }
+      return {
+        parts: [{ text: '🎁 ' }, actor, { text: ' deixou um presente pra você.' }],
+        title: `🎁 ${actorName} deixou um presente pra você`,
+        body: 'Abra o WatchMate pra descobrir 💝',
+        thread: 'gift',
+        imageUrl: null,
+        // O presente abre sozinho quando o app abre, em qualquer tela.
+        link: { label: 'Abrir o presente', path: '/my-list' },
+        renotify: true,
+      };
+    case 'gift-opened':
+      return {
+        parts: [{ text: '🥹 ' }, actor, { text: ' abriu seu presente.' }],
+        title: `🥹 ${actorName} abriu seu presente`,
+        body: `${headline} 💝`,
+        thread: `gift:${gift.id}`,
+        imageUrl: null,
+        link: { label: 'Ver o presente', path: giftPath },
+        renotify: true,
+      };
+    case 'gift-reacted':
+      return {
+        parts: [{ text: `${gift.reacao ?? '❤️'} ` }, actor, { text: ' reagiu ao seu presente.' }],
+        title: `${gift.reacao ?? '❤️'} ${actorName} reagiu ao seu presente`,
+        body: `${headline} 💝`,
+        thread: `gift:${gift.id}`,
+        imageUrl: null,
+        link: { label: 'Ver o presente', path: giftPath },
+        renotify: true,
+      };
+    case 'voucher-used': {
+      const voucher = gift.vales.find((item) => item.id === event.voucherId);
+      if (!voucher) return null;
+      const label = `${voucher.emoji ? `${voucher.emoji} ` : ''}${voucher.texto}`;
+      return {
+        parts: [{ text: '🎟️ ' }, actor, { text: ` quer usar um vale: ${label}` }],
+        title: `🎟️ ${actorName} quer usar um vale`,
+        body: `${label}. Hora de cumprir!`,
+        thread: `voucher:${voucher.id}`,
+        imageUrl: null,
+        link: { label: 'Ver o vale', path: giftPath },
+        renotify: true,
+      };
+    }
+  }
+}
+
 // Monta o aviso de um evento para quem vai receber (comentários e reações dependem do que a
 // pessoa já viu). Null se a série sumiu nesse meio-tempo.
 export async function describeEvent(
@@ -167,6 +271,16 @@ export async function describeEvent(
     event.type === 'invite-canceled'
   ) {
     return describeInvite(event, actorName, new Date());
+  }
+
+  if (
+    event.type === 'gift-sent' ||
+    event.type === 'gift-delivered' ||
+    event.type === 'gift-opened' ||
+    event.type === 'gift-reacted' ||
+    event.type === 'voucher-used'
+  ) {
+    return describeGift(event, actorName);
   }
 
   if (event.type === 'note-left') {

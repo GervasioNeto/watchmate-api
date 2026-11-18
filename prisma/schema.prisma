@@ -41,6 +41,8 @@ model Usuario {
   convitesRecebidos   ConviteSessao[]      @relation("ConvitePara")
   avisosRecebidos     Aviso[]              @relation("AvisoPara")
   avisosFeitos        Aviso[]              @relation("AvisoDe")
+  presentesDados      Presente[]           @relation("PresenteDe")
+  presentesRecebidos  Presente[]           @relation("PresentePara")
 
   @@map("usuarios")
 }
@@ -50,10 +52,15 @@ model Grupo {
   nome          String   @default("Nosso Grupo")
   codigoConvite String   @unique @map("codigo_convite")
   criadoEm      DateTime @default(now()) @map("criado_em")
+  // Desde quando vocês estão juntos (só o dia). Reservada, ainda sem uso: entrou com os
+  // presentes e saiu do app antes de ir ao ar, até a dupla decidir como usar as datas. Fica no
+  // schema porque já existe no banco (que é o mesmo para todos os ambientes).
+  juntosDesde   DateTime? @map("juntos_desde") @db.Date
 
   membros            MembroDoGrupo[]
   seriesAcompanhadas SerieAcompanhada[]
   convites           ConviteSessao[]
+  presentes          Presente[]
 
   @@map("grupos")
 }
@@ -323,4 +330,58 @@ model Aviso {
 
   @@index([usuarioId, atualizadoEm])
   @@map("avisos")
+}
+
+// Um presentinho de um para o outro (ver src/gifts): a mensagem, até três vales ("vale uma
+// maratona com pipoca") e o embrulho, entregue numa hora marcada (o aviso chega à meia-noite
+// do aniversário de namoro, por exemplo). Até a entrega, quem vai receber não vê nada: nem
+// aviso, nem pista. Presente fica guardado: não some com o tempo, como os avisos.
+//
+// A ocasião ("anniversary", "valentines"…) e o embrulho ("passion"…) são texto conferido
+// pela API, e não enum: o banco é um só para as versões que rodam ao mesmo tempo (a sua
+// máquina, a develop e a main), e uma ocasião nova não pode quebrar a versão anterior.
+model Presente {
+  id            String    @id @default(uuid()) @db.Uuid
+  grupoId       String    @map("grupo_id") @db.Uuid
+  deUsuarioId   String    @map("de_usuario_id") @db.Uuid
+  paraUsuarioId String    @map("para_usuario_id") @db.Uuid
+  ocasiao       String
+  embrulho      String
+  mensagem      String
+  entregarEm    DateTime  @map("entregar_em")
+  // A chave VAPID do ambiente que criou: só ele manda o push da entrega (ver dispatch.ts).
+  chaveVapid    String?   @map("chave_vapid")
+  // O push da entrega já saiu (ou não precisa mais: o presente foi aberto antes).
+  avisadoEm     DateTime? @map("avisado_em")
+  abertoEm      DateTime? @map("aberto_em")
+  // O emoji com que quem recebeu respondeu ao presente.
+  reacao        String?
+  reagidoEm     DateTime? @map("reagido_em")
+  criadoEm      DateTime  @default(now()) @map("criado_em")
+
+  grupo Grupo          @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  de    Usuario        @relation("PresenteDe", fields: [deUsuarioId], references: [id], onDelete: Cascade)
+  para  Usuario        @relation("PresentePara", fields: [paraUsuarioId], references: [id], onDelete: Cascade)
+  vales ValePresente[]
+
+  @@index([paraUsuarioId, entregarEm])
+  @@index([deUsuarioId, criadoEm])
+  @@index([entregarEm])
+  @@map("presentes")
+}
+
+// Um vale dentro do presente: um pedido que quem recebeu "usa" quando quiser, e quem deu
+// fica sabendo na hora (para cumprir).
+model ValePresente {
+  id         String    @id @default(uuid()) @db.Uuid
+  presenteId String    @map("presente_id") @db.Uuid
+  texto      String
+  emoji      String?
+  ordem      Int
+  usadoEm    DateTime? @map("usado_em")
+
+  presente Presente @relation(fields: [presenteId], references: [id], onDelete: Cascade)
+
+  @@index([presenteId])
+  @@map("vales_presente")
 }
