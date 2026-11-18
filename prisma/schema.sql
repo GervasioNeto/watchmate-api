@@ -41,6 +41,7 @@ CREATE TABLE "grupos" (
     "nome" TEXT NOT NULL DEFAULT 'Nosso Grupo',
     "codigo_convite" TEXT NOT NULL,
     "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "juntos_desde" DATE,
 
     CONSTRAINT "grupos_pkey" PRIMARY KEY ("id")
 );
@@ -198,6 +199,38 @@ CREATE TABLE "avisos" (
     CONSTRAINT "avisos_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "presentes" (
+    "id" UUID NOT NULL,
+    "grupo_id" UUID NOT NULL,
+    "de_usuario_id" UUID NOT NULL,
+    "para_usuario_id" UUID NOT NULL,
+    "ocasiao" TEXT NOT NULL,
+    "embrulho" TEXT NOT NULL,
+    "mensagem" TEXT NOT NULL,
+    "entregar_em" TIMESTAMP(3) NOT NULL,
+    "chave_vapid" TEXT,
+    "avisado_em" TIMESTAMP(3),
+    "aberto_em" TIMESTAMP(3),
+    "reacao" TEXT,
+    "reagido_em" TIMESTAMP(3),
+    "criado_em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "presentes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "vales_presente" (
+    "id" UUID NOT NULL,
+    "presente_id" UUID NOT NULL,
+    "texto" TEXT NOT NULL,
+    "emoji" TEXT,
+    "ordem" INTEGER NOT NULL,
+    "usado_em" TIMESTAMP(3),
+
+    CONSTRAINT "vales_presente_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "usuarios_email_key" ON "usuarios"("email");
 
@@ -236,6 +269,18 @@ CREATE INDEX "convites_sessao_grupo_id_criado_em_idx" ON "convites_sessao"("grup
 
 -- CreateIndex
 CREATE INDEX "avisos_usuario_id_atualizado_em_idx" ON "avisos"("usuario_id", "atualizado_em");
+
+-- CreateIndex
+CREATE INDEX "presentes_para_usuario_id_entregar_em_idx" ON "presentes"("para_usuario_id", "entregar_em");
+
+-- CreateIndex
+CREATE INDEX "presentes_de_usuario_id_criado_em_idx" ON "presentes"("de_usuario_id", "criado_em");
+
+-- CreateIndex
+CREATE INDEX "presentes_entregar_em_idx" ON "presentes"("entregar_em");
+
+-- CreateIndex
+CREATE INDEX "vales_presente_presente_id_idx" ON "vales_presente"("presente_id");
 
 -- AddForeignKey
 ALTER TABLE "membros_do_grupo" ADD CONSTRAINT "membros_do_grupo_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "grupos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -305,4 +350,16 @@ ALTER TABLE "avisos" ADD CONSTRAINT "avisos_serie_acompanhada_id_fkey" FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE "avisos" ADD CONSTRAINT "avisos_convite_id_fkey" FOREIGN KEY ("convite_id") REFERENCES "convites_sessao"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "presentes" ADD CONSTRAINT "presentes_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "grupos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "presentes" ADD CONSTRAINT "presentes_de_usuario_id_fkey" FOREIGN KEY ("de_usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "presentes" ADD CONSTRAINT "presentes_para_usuario_id_fkey" FOREIGN KEY ("para_usuario_id") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vales_presente" ADD CONSTRAINT "vales_presente_presente_id_fkey" FOREIGN KEY ("presente_id") REFERENCES "presentes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

@@ -1,5 +1,6 @@
 import { TipoAviso } from '@prisma/client';
 import { inviteInclude, toInviteDtos, type InviteDto } from '../invites/invites';
+import { listGiftInboxEvents, type InboxGift } from './gifts';
 import { episodeKey } from '../lib/progress';
 import prisma from '../lib/prisma';
 
@@ -16,7 +17,11 @@ export type InboxItemType =
   | 'reaction'
   | 'series-added'
   | 'episode-watched'
-  | 'season-finished';
+  | 'season-finished'
+  // Os presentes (ver gifts.ts): chegou um para você, o seu foi aberto, usaram um vale seu.
+  | 'gift'
+  | 'gift-opened'
+  | 'voucher-used';
 
 const TYPE_OF: Record<TipoAviso, InboxItemType> = {
   CONVITE: 'invite',
@@ -49,6 +54,7 @@ export interface InboxItemDto {
   // conteúdo (a mesma regra do resto do app).
   hidden: boolean;
   invite: InviteDto | null;
+  gift: InboxGift | null;
 }
 
 // Quem está na dupla agora. Avisos de quem saiu do grupo deixam de aparecer.
@@ -81,7 +87,8 @@ export async function listInbox(userId: string, now: Date): Promise<InboxItemDto
     where: { usuarioId: userId, atualizadoEm: { lt: new Date(now.getTime() - RETENTION_MS) } },
   });
 
-  const [lastSeen, rows] = await Promise.all([
+  const cutoff = new Date(now.getTime() - RETENTION_MS);
+  const [lastSeen, rows, giftEvents] = await Promise.all([
     seenAt(userId),
     prisma.aviso.findMany({
       where: { usuarioId: userId, autorId: { in: members } },
@@ -92,6 +99,7 @@ export async function listInbox(userId: string, now: Date): Promise<InboxItemDto
         convite: { include: inviteInclude },
       },
     }),
+    listGiftInboxEvents(userId, members, cutoff, now),
   ]);
 
   // Comentário e reação são lidos agora, não guardados no aviso: um comentário apagado
@@ -187,7 +195,7 @@ export async function listInbox(userId: string, now: Date): Promise<InboxItemDto
   );
   const inviteOf = new Map(invites.map((invite) => [invite.id, invite]));
 
-  return rows.flatMap((row): InboxItemDto[] => {
+  const notices = rows.flatMap((row): InboxItemDto[] => {
     let text = row.texto;
     let emoji: string | null = null;
     let hidden = false;
@@ -226,9 +234,29 @@ export async function listInbox(userId: string, now: Date): Promise<InboxItemDto
         emoji,
         hidden,
         invite,
+        gift: null,
       },
     ];
   });
+
+  const gifts = giftEvents.map((event): InboxItemDto => ({
+    id: event.id,
+    type: event.type,
+    actorId: event.actorId,
+    at: event.at.toISOString(),
+    count: 1,
+    isNew: !lastSeen || event.at > lastSeen,
+    series: null,
+    season: null,
+    episode: null,
+    text: event.text,
+    emoji: event.emoji,
+    hidden: false,
+    invite: null,
+    gift: event.gift,
+  }));
+
+  return [...notices, ...gifts].sort((a, b) => b.at.localeCompare(a.at)).slice(0, LIMIT);
 }
 
 // Quantos avisos chegaram desde a última vez que a pessoa abriu a tela (o pontinho no ícone
@@ -238,9 +266,13 @@ export async function countUnseen(userId: string, now = new Date()): Promise<num
   if (members.length === 0) return 0;
   const cutoff = new Date(now.getTime() - RETENTION_MS);
   const since = lastSeen && lastSeen > cutoff ? lastSeen : cutoff;
-  return prisma.aviso.count({
-    where: { usuarioId: userId, autorId: { in: members }, atualizadoEm: { gt: since } },
-  });
+  const [notices, gifts] = await Promise.all([
+    prisma.aviso.count({
+      where: { usuarioId: userId, autorId: { in: members }, atualizadoEm: { gt: since } },
+    }),
+    listGiftInboxEvents(userId, members, since, now),
+  ]);
+  return notices + gifts.length;
 }
 
 export async function markInboxSeen(userId: string, now: Date): Promise<void> {

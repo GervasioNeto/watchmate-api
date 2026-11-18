@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../lib/asyncHandler';
 import { getUserGroupId } from '../lib/groupMembership';
+import { isUuid } from '../lib/ids';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { notify } from '../notifications/notify';
@@ -14,14 +15,14 @@ import {
   toInviteDto,
 } from '../invites/invites';
 import { isInvitePhrase } from '../invites/phrases';
-import { isTimeZone, parseInviteTime } from '../invites/schedule';
+import { parseInviteTime } from '../invites/schedule';
+import { isTimeZone } from '../lib/zonedTime';
 
 const router = Router();
 
 // Um convite por vez a cada tanto: o push toca no celular do par, e tocar "Bora?" várias
 // vezes seguidas não pode virar um alarme.
 const COOLDOWN_MS = 30 * 1000;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isEpisodeNumber(value: unknown, max: number): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= max;
@@ -54,7 +55,7 @@ router.post(
       unknown
     >;
 
-    if (typeof seriesId !== 'string' || !UUID_PATTERN.test(seriesId)) {
+    if (!isUuid(seriesId)) {
       res.status(400).json({ error: 'seriesId inválido' });
       return;
     }
@@ -129,7 +130,7 @@ router.post(
 
 // Carrega o convite se ele é da dupla de quem pediu. Null: não existe para essa pessoa.
 async function findGroupInvite(inviteId: string, userId: string) {
-  if (!UUID_PATTERN.test(inviteId)) return null;
+  if (!isUuid(inviteId)) return null;
   const [groupId, invite] = await Promise.all([
     getUserGroupId(userId),
     prisma.conviteSessao.findUnique({ where: { id: inviteId }, include: inviteInclude }),

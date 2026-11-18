@@ -95,6 +95,14 @@ function toEntry(event: NotificationEvent): InboxEntry | null {
       };
     case 'invite-canceled':
       return null;
+    // Presentes não viram aviso guardado: "Entre vocês" lê direto da tabela de presentes (ver
+    // read.ts), sem precisar de um tipo novo de aviso no banco.
+    case 'gift-sent':
+    case 'gift-delivered':
+    case 'gift-opened':
+    case 'gift-reacted':
+    case 'voucher-used':
+      return null;
   }
 }
 
